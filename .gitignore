@@ -48,3 +48,4 @@ __debug_bin*
 debug
 
 .tmp/
+.claude/worktrees

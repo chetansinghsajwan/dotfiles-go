@@ -35,7 +35,7 @@ exec_go() {
 }
 
 exec_dotman() {
-    exec_go run dotman/main.go "$@"
+    exec_go run . "$@"
 }
 
 ensure_go_installed

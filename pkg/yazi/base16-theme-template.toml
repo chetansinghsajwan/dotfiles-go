@@ -1,0 +1,89 @@
+[mgr]
+cwd = { fg = "{{.Base0C}}" }
+
+find_keyword = { bold = true, fg = "{{.Base0A}}" }
+find_position = { fg = "{{.Base0E}}" }
+
+marker_copied = { fg = "{{.Base0B}}", bg = "{{.Base0B}}" }
+marker_cut = { fg = "{{.Base08}}", bg = "{{.Base08}}" }
+marker_selected = { fg = "{{.Base0A}}", bg = "{{.Base0A}}" }
+
+count_copied = { fg = "{{.Base00}}", bg = "{{.Base0B}}" }
+count_cut = { fg = "{{.Base00}}", bg = "{{.Base08}}" }
+count_selected = { fg = "{{.Base00}}", bg = "{{.Base0A}}" }
+
+border_style = { fg = "{{.Base0D}}" }
+
+[tabs]
+active = { fg = "{{.Base00}}", bg = "{{.Base0D}}" }
+inactive = { fg = "{{.Base0D}}", bg = "{{.Base01}}" }
+
+[indicator]
+parent = { reversed = true }
+current = { reversed = true }
+preview = { underline = true }
+
+[mode]
+normal_main = { fg = "{{.Base00}}", bg = "{{.Base0D}}", bold = true }
+normal_alt = { fg = "{{.Base0D}}", bg = "{{.Base02}}" }
+
+select_main = { fg = "{{.Base00}}", bg = "{{.Base0E}}", bold = true }
+select_alt = { fg = "{{.Base0E}}", bg = "{{.Base02}}" }
+
+unset_main = { fg = "{{.Base00}}", bg = "{{.Base08}}", bold = true }
+unset_alt = { fg = "{{.Base08}}", bg = "{{.Base02}}" }
+
+[status]
+perm_exec = { fg = "{{.Base0B}}" }
+perm_read = { fg = "{{.Base0A}}" }
+perm_sep = { fg = "{{.Base0C}}" }
+perm_type = { fg = "{{.Base0D}}" }
+perm_write = { fg = "{{.Base08}}" }
+
+progress_error = { fg = "{{.Base08}}", bg = "{{.Base00}}" }
+progress_label = { fg = "{{.Base05}}", bg = "{{.Base00}}" }
+progress_normal = { fg = "{{.Base05}}", bg = "{{.Base00}}" }
+
+[pick]
+active = { fg = "{{.Base0E}}" }
+border = { fg = "{{.Base0D}}" }
+inactive = { fg = "{{.Base05}}" }
+
+[task]
+title = { fg = "{{.Base0D}}" }
+border = { fg = "{{.Base0D}}" }
+hovered = { fg = "{{.Base05}}", bg = "{{.Base02}}" }
+
+[input]
+border = { fg = "{{.Base0D}}" }
+selected = { bg = "{{.Base02}}" }
+
+[help]
+desc = { fg = "{{.Base05}}" }
+on = { fg = "{{.Base0C}}" }
+run = { fg = "{{.Base0E}}" }
+hovered = { reversed = true, bold = true }
+footer = { fg = "{{.Base02}}", bg = "{{.Base05}}" }
+
+[which]
+mask = { bg = "{{.Base02}}" }
+desc = { fg = "{{.Base05}}" }
+cand = { fg = "{{.Base0C}}" }
+rest = { fg = "{{.Base0F}}" }
+
+separator_style = { fg = "{{.Base04}}" }
+
+[notify]
+title_info = { fg = "{{.Base0C}}" }
+title_warn = { fg = "{{.Base0A}}" }
+title_error = { fg = "{{.Base08}}" }
+
+[filetype]
+rules = [
+  { mime = "image/*", fg = "{{.Base0C}}" },
+  { mime = "{audio,video}/*", fg = "{{.Base0A}}" },
+  { mime = "application/{pdf,doc,rtf}", fg = "{{.Base0B}}" },
+  { mime = "application/{zip,rar,7z*,tar,gzip,xz,zstd,bzip*,lzma,compress,archive,cpio,arj,xar,ms-cab*}", fg = "{{.Base0E}}" },
+  { url = "*/", fg = "{{.Base0D}}" },
+  { mime = "*", fg = "{{.Base05}}" },
+]
