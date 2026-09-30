@@ -1,5 +1,7 @@
 package theme
 
+import "fmt"
+
 var Themes = []Theme{
 	AyuDark,
 	AyuMirage,
@@ -37,7 +39,12 @@ var themesByName = func() map[string]Theme {
 	return m
 }()
 
-func Get(name string) (Theme, bool) {
+func Get(name string) (Theme, error) {
 	t, ok := themesByName[name]
-	return t, ok
+
+	if !ok {
+		return Theme{}, fmt.Errorf("theme not found: %s", name)
+	}
+
+	return t, nil
 }
