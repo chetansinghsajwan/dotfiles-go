@@ -46,3 +46,5 @@ Thumbs.db
 # Debug
 __debug_bin*
 debug
+
+.tmp/
