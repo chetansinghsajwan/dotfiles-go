@@ -6,6 +6,7 @@ import (
 	"strconv"
 
 	"dotman/config"
+	"dotman/configured/lazygit"
 	"dotman/configured/yazi"
 	"dotman/logging"
 	"dotman/pkg"
@@ -15,6 +16,7 @@ import (
 
 var packages = []pkg.Package{
 	&yazi.Yazi,
+	&lazygit.Lazygit,
 }
 
 // devMode reports whether DOTMAN_DEV is set to a true value, like 1 or true.

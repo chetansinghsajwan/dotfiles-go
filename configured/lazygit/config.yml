@@ -1,0 +1,26 @@
+customCommands:
+  - command: |
+      sh -c '
+        p="$1"
+        if git worktree list --porcelain \
+          | awk -v p="$p" "\$0==\"worktree \"p{f=1;next} /^\$/{f=0} f&&/^locked/{print;exit}" \
+          | grep -q locked
+        then
+          git worktree unlock "$p" && echo "Unlocked $p"
+        else
+          git worktree lock "$p" && echo "Locked $p"
+        fi
+      ' -- {{ .SelectedWorktree.Path | quote }}
+    context: worktrees
+    description: Toggle worktree lock
+    key: l
+    output: popup
+    outputTitle: Worktree lock
+git:
+  diffRenderers:
+    - command: delta --paging=never
+gui:
+  filterMode: fuzzy
+  nerdFontsVersion: "3"
+  scrollHeight: 8
+  shrinkSidePanelsToContent: false
