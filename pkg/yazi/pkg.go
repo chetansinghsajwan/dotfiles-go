@@ -2,12 +2,8 @@ package yazi
 
 import (
 	_ "embed"
-	"fmt"
-	"io/fs"
 	"log/slog"
 	"os"
-	"os/exec"
-	"path"
 	"path/filepath"
 	"strings"
 	"text/template"
@@ -41,34 +37,6 @@ type Package struct {
 
 	// Written as init.lua.
 	InitLua string
-}
-
-type Plugin struct {
-	// Either a local directory or a GitHub package id:
-	//   - "/abs/path/places.yazi": a local directory; use paths.Rel for
-	//     paths relative to the defining file
-	//   - "yazi-rs/plugins:piper" or "dedukun/bookmarks": installed with
-	//     `ya pkg`
-	// Local plugins are deployed as plugins/<name>.yazi, where name is the
-	// directory's name without its extension.
-	Path string
-
-	// Git revision to pin; "" installs the latest. Ignored, with a warning,
-	// for local plugins.
-	Version string
-}
-
-// IsLocal reports whether the plugin is a local directory rather than a
-// GitHub package id. Relative paths count as local so they're rejected with
-// a clear error instead of being passed to `ya pkg`.
-func (y Plugin) IsLocal() bool {
-	return strings.HasPrefix(y.Path, "./") || filepath.IsAbs(y.Path)
-}
-
-// localName returns the name a local plugin is deployed under.
-func (y Plugin) localName() string {
-	base := path.Base(filepath.ToSlash(y.Path))
-	return strings.TrimSuffix(base, path.Ext(base))
 }
 
 type Keybind struct {
@@ -139,7 +107,7 @@ func (p *Package) Outputs(log *slog.Logger, cfg config.Config, storePath string)
 		}
 	}
 
-	if err := p.deployPlugins(log, storePath); err != nil {
+	if err := p.installPlugins(log, storePath); err != nil {
 		return nil, err
 	}
 
@@ -192,78 +160,6 @@ type packageToml struct {
 type packageDep struct {
 	Use string `toml:"use"`
 	Rev string `toml:"rev,omitempty"`
-}
-
-// deployPlugins copies local plugins into storePath/plugins and installs
-// upstream ones with `ya pkg`.
-func (p *Package) deployPlugins(log *slog.Logger, storePath string) error {
-	var upstream []Plugin
-	for _, plugin := range p.Plugins {
-		if !plugin.IsLocal() {
-			upstream = append(upstream, plugin)
-			continue
-		}
-
-		if plugin.Version != "" {
-			log.Warn("Local plugins aren't versioned; ignoring Version.",
-				"plugin", plugin.Path, "version", plugin.Version)
-		}
-
-		src, err := localSource(plugin.Path)
-		if err != nil {
-			return err
-		}
-
-		dst := filepath.Join(storePath, "plugins", plugin.localName()+".yazi")
-		log.Debug("Copying local plugin.", "plugin", plugin.Path, "dst", dst)
-		if err := os.CopyFS(dst, src); err != nil {
-			return fmt.Errorf("copying yazi plugin %s: %w", plugin.Path, err)
-		}
-	}
-
-	if len(upstream) == 0 {
-		return nil
-	}
-
-	return installPlugins(log, storePath, upstream)
-}
-
-// localSource opens a local plugin directory.
-func localSource(pluginPath string) (fs.FS, error) {
-	if !filepath.IsAbs(pluginPath) {
-		return nil, fmt.Errorf("yazi plugin %s: local paths must be absolute; use paths.Rel", pluginPath)
-	}
-
-	return os.DirFS(pluginPath), nil
-}
-
-// installPlugins writes package.toml and lets `ya pkg install` fetch and
-// deploy the plugins into storePath/plugins.
-func installPlugins(log *slog.Logger, storePath string, plugins []Plugin) error {
-	var pkgs packageToml
-	pkgs.Flavor.Deps = []packageDep{}
-	for _, plugin := range plugins {
-		pkgs.Plugin.Deps = append(pkgs.Plugin.Deps, packageDep{Use: plugin.Path, Rev: plugin.Version})
-	}
-
-	if err := writeToml(log, filepath.Join(storePath, "package.toml"), pkgs); err != nil {
-		return err
-	}
-
-	log.Info("Installing plugins.", "count", len(plugins))
-	for _, plugin := range plugins {
-		log.Debug("Plugin to install.", "plugin", plugin.Path, "version", plugin.Version)
-	}
-
-	cmd := exec.Command("ya", "pkg", "install")
-	cmd.Env = append(os.Environ(), "YAZI_CONFIG_HOME="+storePath)
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("ya pkg install: %w\n%s", err, out)
-	}
-
-	log.Debug("Installed plugins.", "output", string(out))
-	return nil
 }
 
 func writeToml(log *slog.Logger, path string, v any) error {
