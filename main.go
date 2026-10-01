@@ -8,12 +8,12 @@ import (
 	"dotman/config"
 	"dotman/logging"
 	"dotman/pkg"
-	"dotman/pkg/yazi"
+	yaziConfigured "dotman/pkg/yazi/configured"
 	"dotman/store"
 )
 
 var packages = []pkg.Package{
-	yazi.ConfiguredYazi,
+	yaziConfigured.Yazi,
 }
 
 // devMode reports whether DOTMAN_DEV is set to a true value, like 1 or true.

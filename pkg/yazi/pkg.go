@@ -174,8 +174,7 @@ func writeToml(log *slog.Logger, path string, v any) error {
 	return writeFile(log, path, b)
 }
 
-func writeFile(log *slog.Logger, path string, b []byte) error {
-	log.Debug("Writing config file.", "path", path, "bytes", len(b))
+func writeFile(_ *slog.Logger, path string, b []byte) error {
 	return os.WriteFile(path, b, store.FilePerm)
 }
 

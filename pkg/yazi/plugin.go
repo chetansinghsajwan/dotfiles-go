@@ -83,12 +83,13 @@ func (p Plugin) IsLocal() bool {
 
 // Install deploys the plugin into installPath/plugins.
 func (p Plugin) Install(log *slog.Logger, installPath string) error {
-	log.Debug("Installing plugin...", "plugin", p.Path, "version", p.Version)
 
 	if p.IsLocal() {
+		log.Debug("Installing plugin...", "plugin", p.Path)
 		return p.installLocal(installPath)
 	}
 
+	log.Debug("Installing plugin...", "plugin", p.Path, "version", p.Version)
 	return p.installRemote(log, installPath)
 }
 
@@ -96,7 +97,7 @@ func (p Plugin) installLocal(installPath string) error {
 	dst := filepath.Join(installPath, "plugins", p.Name()+".yazi")
 
 	if err := os.CopyFS(dst, p.src); err != nil {
-		return fmt.Errorf("copying yazi plugin %s: %w", p.Path, err)
+		return fmt.Errorf("Copying yazi plugin %s: %w", p.Path, err)
 	}
 
 	return nil
@@ -143,7 +144,6 @@ func (p Plugin) installRemote(log *slog.Logger, installPath string) error {
 		return fmt.Errorf("ya pkg install %s: %w\n%s", p.Path, err, out)
 	}
 
-	log.Debug("Installed plugin.", "plugin", p.Path, "output", string(out))
 	return nil
 }
 

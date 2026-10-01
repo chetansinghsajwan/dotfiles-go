@@ -1,6 +1,7 @@
-package yazi
+package configured
 
 import (
+	"dotman/pkg/yazi"
 	"embed"
 )
 
@@ -12,26 +13,26 @@ var plugins embed.FS
 
 // Configured returns yazi set up the way these dotfiles use it; ported from
 // mkYazi in yazi.nix.
-func NewConfigured() *Package {
-	p := NewYaziPackage()
+func NewConfigured() *yazi.Package {
+	p := yazi.NewYaziPackage()
 
 	// TODO: pv and op aren't packaged yet; 7zz and ffmpeg (ffprobe) feed the
 	// properties panel.
 	p.Depends = []string{"7zz", "ffmpeg"}
 
-	p.Plugins = []Plugin{
-		NewPlugin("yazi-rs/plugins:full-border", "7200d73"),
-		NewPlugin("yazi-rs/plugins:toggle-pane", "7200d73"),
-		NewPlugin("yazi-rs/plugins:piper", "7200d73"),
-		NewPlugin("dedukun/bookmarks", "9ef1254"),
+	p.Plugins = []yazi.Plugin{
+		yazi.NewPlugin("yazi-rs/plugins:full-border", "7200d73"),
+		yazi.NewPlugin("yazi-rs/plugins:toggle-pane", "7200d73"),
+		yazi.NewPlugin("yazi-rs/plugins:piper", "7200d73"),
+		yazi.NewPlugin("dedukun/bookmarks", "9ef1254"),
 
-		NewLocalPlugin(plugins, "plugins/properties.lua"),
-		NewLocalPlugin(plugins, "plugins/places.lua"),
-		NewLocalPlugin(plugins, "plugins/linemode-toggle.yazi"),
+		yazi.NewLocalPlugin(plugins, "plugins/properties.lua"),
+		yazi.NewLocalPlugin(plugins, "plugins/places.lua"),
+		yazi.NewLocalPlugin(plugins, "plugins/linemode-toggle.yazi"),
 	}
 	p.InitLua = initLua
 
-	p.Settings = Settings{
+	p.Settings = yazi.Settings{
 		"mgr": map[string]any{
 			"ratio":    []int{0, 3, 6},
 			"linemode": "perm_time",
@@ -81,7 +82,7 @@ func NewConfigured() *Package {
 		},
 	}
 
-	p.Keybinds = []Keybind{
+	p.Keybinds = []yazi.Keybind{
 		{Keys: []string{"p", "p"}, Command: "plugin toggle-pane min-preview", Desc: "Toggle the preview pane"},
 		{Keys: []string{"p", "q"}, Command: "plugin places toggle", Desc: "Toggle the quickbar (favorites/bookmarks/drives/recents)"},
 		{Keys: []string{"p", "m"}, Command: "plugin properties toggle", Desc: "Toggle the file metadata panel"},
@@ -115,4 +116,4 @@ func NewConfigured() *Package {
 	return p
 }
 
-var ConfiguredYazi = NewConfigured()
+var Yazi = NewConfigured()
