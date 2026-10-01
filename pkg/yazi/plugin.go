@@ -82,15 +82,17 @@ func (p Plugin) IsLocal() bool {
 }
 
 // Install deploys the plugin into installPath/plugins.
-func (p Plugin) Install(log *slog.Logger, installPath string) error {
+// Install deploys the plugin into the yazi config directory configPath.
+// Remote plugins are fetched with the ya binary at yaPath.
+func (p Plugin) Install(log *slog.Logger, configPath, yaPath string) error {
 
 	if p.IsLocal() {
 		log.Debug("Installing plugin...", "plugin", p.Path)
-		return p.installLocal(installPath)
+		return p.installLocal(configPath)
 	}
 
 	log.Debug("Installing plugin...", "plugin", p.Path, "version", p.Version)
-	return p.installRemote(log, installPath)
+	return p.installRemote(log, configPath, yaPath)
 }
 
 func (p Plugin) installLocal(installPath string) error {
@@ -106,7 +108,7 @@ func (p Plugin) installLocal(installPath string) error {
 // installRemote adds the plugin to installPath/package.toml and lets
 // `ya pkg install` fetch and deploy it into installPath/plugins. `ya pkg add`
 // can't pin a revision, hence editing package.toml directly.
-func (p Plugin) installRemote(log *slog.Logger, installPath string) error {
+func (p Plugin) installRemote(log *slog.Logger, installPath, yaPath string) error {
 	pkgPath := filepath.Join(installPath, "package.toml")
 
 	pkgs, err := readPackageToml(pkgPath)
@@ -137,7 +139,7 @@ func (p Plugin) installRemote(log *slog.Logger, installPath string) error {
 		return err
 	}
 
-	cmd := exec.Command("ya", "pkg", "install")
+	cmd := exec.Command(yaPath, "pkg", "install")
 	cmd.Env = append(os.Environ(), "YAZI_CONFIG_HOME="+installPath)
 	out, err := cmd.CombinedOutput()
 	if err != nil {

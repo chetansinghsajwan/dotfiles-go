@@ -16,6 +16,14 @@ var plugins embed.FS
 func NewConfigured() *yazi.Package {
 	p := yazi.NewYaziPackage()
 
+	p.Version = "v26.9.1"
+	p.Hashes = map[string]string{
+		"x86_64-unknown-linux-musl":  "sha256:9b9c39decccf8cb0ff53a7d637d38f8a79d93bbd0099f4ea9c619ef6bb392f5d",
+		"aarch64-unknown-linux-musl": "sha256:dd569daecaae914185f295634109295ccd25c1b42b02eb89a74f651970024f2e",
+		"x86_64-apple-darwin":        "sha256:36e09036fcc446488d876d139a5e303f2443b82cfb6ac7dfcb43892d6fe6fa20",
+		"aarch64-apple-darwin":       "sha256:3921182a21cceb0a505e5dac578e1487d48104caa5f114e9f8adf40b5a7289a9",
+	}
+
 	// TODO: pv and op aren't packaged yet; 7zz and ffmpeg (ffprobe) feed the
 	// properties panel.
 	p.Depends = []string{"7zz", "ffmpeg"}

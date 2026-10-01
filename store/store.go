@@ -11,6 +11,7 @@ import (
 const (
 	DirPerm  os.FileMode = 0o755
 	FilePerm os.FileMode = 0o644
+	ExecPerm os.FileMode = 0o755
 )
 
 type Store struct {

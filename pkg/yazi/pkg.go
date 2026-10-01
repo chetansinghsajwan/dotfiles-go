@@ -18,7 +18,14 @@ import (
 
 type Package struct {
 	Aliases []string
+
+	// Release tag of yazi to install, e.g. "v26.9.1".
 	Version string
+
+	// SHA-256 of the release zip for each target triple, as GitHub shows it,
+	// e.g. "x86_64-unknown-linux-musl": "sha256:9b9c...". Installing on a
+	// target without a hash fails and reports the downloaded zip's hash.
+	Hashes map[string]string
 
 	// List of dependencies
 	Depends []string
@@ -60,9 +67,20 @@ func (p *Package) Name() string {
 	return "yazi"
 }
 
-// Outputs builds yazi's config directory in storePath and returns where it
-// should be linked. log should already be tagged with the package's name.
-func (p *Package) Outputs(log *slog.Logger, cfg config.Config, installPath string) (pkg.PackageOutputs, error) {
+// Outputs installs yazi's binaries into storePath/bin and builds its config
+// directory in storePath/config, and returns where they should be linked.
+// log should already be tagged with the package's name.
+func (p *Package) Outputs(log *slog.Logger, cfg config.Config, storePath string) (pkg.PackageOutputs, error) {
+	binPath := filepath.Join(storePath, "bin")
+	if err := p.installBinaries(log, binPath); err != nil {
+		return nil, err
+	}
+
+	installPath := filepath.Join(storePath, "config")
+	if err := os.MkdirAll(installPath, store.DirPerm); err != nil {
+		return nil, err
+	}
+
 	if len(p.Settings) > 0 {
 		if err := writeToml(log, filepath.Join(installPath, "yazi.toml"), p.Settings); err != nil {
 			return nil, err
@@ -108,7 +126,7 @@ func (p *Package) Outputs(log *slog.Logger, cfg config.Config, installPath strin
 	}
 
 	for _, plugin := range p.Plugins {
-		if err := plugin.Install(log, installPath); err != nil {
+		if err := plugin.Install(log, installPath, filepath.Join(binPath, "ya")); err != nil {
 			return nil, err
 		}
 	}
@@ -118,9 +136,19 @@ func (p *Package) Outputs(log *slog.Logger, cfg config.Config, installPath strin
 		return nil, err
 	}
 
-	return pkg.PackageOutputs{
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return nil, err
+	}
+
+	outputs := pkg.PackageOutputs{
 		filepath.Join(configDir, "yazi"): installPath,
-	}, nil
+	}
+	for _, name := range binaries {
+		outputs[filepath.Join(home, ".local", "bin", name)] = filepath.Join(binPath, name)
+	}
+
+	return outputs, nil
 }
 
 type keymapEntry struct {
