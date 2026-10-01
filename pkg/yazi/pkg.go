@@ -14,6 +14,7 @@ import (
 
 	"github.com/pelletier/go-toml/v2"
 
+	"dotman/config"
 	"dotman/pkg"
 	"dotman/store"
 	"dotman/theme"
@@ -25,7 +26,9 @@ type Package struct {
 
 	// List of dependencies
 	Depends []string
-	Theme   string
+
+	// Overrides the global config's theme; "" uses it.
+	Theme string
 
 	// Upstream plugins are installed with `ya pkg`; local ones are copied.
 	Plugins []Plugin
@@ -81,12 +84,8 @@ type Keybind struct {
 
 type Settings map[string]any
 
-const DefaultTheme = "ayu-dark"
-
 func NewYaziPackage() *Package {
-	return &Package{
-		Theme: DefaultTheme,
-	}
+	return &Package{}
 }
 
 func (p *Package) Name() string {
@@ -95,17 +94,22 @@ func (p *Package) Name() string {
 
 // Outputs builds yazi's config directory in storePath and returns where it
 // should be linked. log should already be tagged with the package's name.
-func (p *Package) Outputs(log *slog.Logger, storePath string) (pkg.PackageOutputs, error) {
+func (p *Package) Outputs(log *slog.Logger, cfg config.Config, storePath string) (pkg.PackageOutputs, error) {
 	if len(p.Settings) > 0 {
 		if err := writeToml(log, filepath.Join(storePath, "yazi.toml"), p.Settings); err != nil {
 			return nil, err
 		}
 	}
 
-	if p.Theme != "" {
-		log.Debug("Rendering theme.", "theme", p.Theme)
+	themeName := p.Theme
+	if themeName == "" {
+		themeName = cfg.Theme
+	}
 
-		t, err := theme.Get(p.Theme)
+	if themeName != "" {
+		log.Debug("Rendering theme.", "theme", themeName)
+
+		t, err := theme.Get(themeName)
 		if err != nil {
 			log.Error("Failed to get theme.", "err", err)
 			return nil, err

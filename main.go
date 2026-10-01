@@ -5,6 +5,7 @@ import (
 	"os"
 	"strconv"
 
+	"dotman/config"
 	"dotman/logging"
 	"dotman/pkg"
 	"dotman/pkg/yazi"
@@ -29,6 +30,8 @@ func main() {
 
 	slog.SetDefault(slog.New(logging.NewHandler(os.Stderr, level)))
 
+	cfg := config.Default
+
 	slog.Info("Initializing store...")
 
 	s, err := store.NewStore()
@@ -48,7 +51,7 @@ func main() {
 			os.Exit(1)
 		}
 
-		outputs, err := p.Outputs(log, storePath)
+		outputs, err := p.Outputs(log, cfg, storePath)
 		if err != nil {
 			log.Error("Failed to build package.", "err", err)
 
