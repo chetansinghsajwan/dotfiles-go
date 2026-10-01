@@ -7,13 +7,13 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
+	"runtime"
 	"strings"
 )
 
 type Plugin struct {
 	// Either a local directory or a GitHub package id:
-	//   - "/abs/path/places.yazi": a local directory; use paths.Rel for
-	//     paths relative to the defining file
+	//   - "/abs/path/places.yazi": a local directory, see NewLocalPlugin
 	//   - "yazi-rs/plugins:piper" or "dedukun/bookmarks": installed with
 	//     `ya pkg`
 	// Local plugins are deployed as plugins/<name>.yazi, where name is the
@@ -40,7 +40,24 @@ func NewPlugin(pluginPath, version string) Plugin {
 	return p
 }
 
+// NewLocalPlugin returns a plugin installed from a local directory. A relative
+// pluginPath is resolved against the directory of the source file that calls
+// NewLocalPlugin, like ./ in Nix. Call it directly in that file: wrapping it in
+// a helper resolves against the helper's file instead.
+//
+// It relies on the source being on disk where it was compiled, which holds
+// for `go run` from the checkout but not for -trimpath builds or binaries
+// moved elsewhere.
 func NewLocalPlugin(pluginPath string) Plugin {
+	if !filepath.IsAbs(pluginPath) {
+		_, file, _, ok := runtime.Caller(1)
+		if !ok {
+			panic("yazi.NewLocalPlugin: can't determine caller")
+		}
+
+		pluginPath = filepath.Join(filepath.Dir(file), pluginPath)
+	}
+
 	p := Plugin{Path: pluginPath, isLocal: true}
 
 	base := path.Base(filepath.ToSlash(p.Path))
@@ -74,10 +91,6 @@ func (p Plugin) installLocal(installPath string) error {
 	// 	log.Warn("Local plugins aren't versioned; ignoring Version.",
 	// 		"plugin", p.Path, "version", p.Version)
 	// }
-
-	if !filepath.IsAbs(p.Path) {
-		return fmt.Errorf("yazi plugin %s: local paths must be absolute; use paths.Rel", p.Path)
-	}
 
 	src := os.DirFS(p.Path)
 	dst := filepath.Join(installPath, "plugins", p.Name()+".yazi")
