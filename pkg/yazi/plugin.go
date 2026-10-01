@@ -2,18 +2,19 @@ package yazi
 
 import (
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"os"
 	"os/exec"
 	"path"
 	"path/filepath"
-	"runtime"
 	"strings"
 )
 
 type Plugin struct {
 	// Either a local directory or a GitHub package id:
-	//   - "/abs/path/places.yazi": a local directory, see NewLocalPlugin
+	//   - "plugins/places.yazi": a local directory in an fs.FS, see
+	//     NewLocalPlugin
 	//   - "yazi-rs/plugins:piper" or "dedukun/bookmarks": installed with
 	//     `ya pkg`
 	// Local plugins are deployed as plugins/<name>.yazi, where name is the
@@ -26,6 +27,9 @@ type Plugin struct {
 
 	name    string
 	isLocal bool
+
+	// Contents of a local plugin's directory.
+	src fs.FS
 }
 
 func NewPlugin(pluginPath, version string) Plugin {
@@ -40,27 +44,26 @@ func NewPlugin(pluginPath, version string) Plugin {
 	return p
 }
 
-// NewLocalPlugin returns a plugin installed from a local directory. A relative
-// pluginPath is resolved against the directory of the source file that calls
-// NewLocalPlugin, like ./ in Nix. Call it directly in that file: wrapping it in
-// a helper resolves against the helper's file instead.
-//
-// It relies on the source being on disk where it was compiled, which holds
-// for `go run` from the checkout but not for -trimpath builds or binaries
-// moved elsewhere.
-func NewLocalPlugin(pluginPath string) Plugin {
-	if !filepath.IsAbs(pluginPath) {
-		_, file, _, ok := runtime.Caller(1)
-		if !ok {
-			panic("yazi.NewLocalPlugin: can't determine caller")
-		}
-
-		pluginPath = filepath.Join(filepath.Dir(file), pluginPath)
+// NewLocalPlugin returns a plugin installed from the directory pluginPath in
+// fsys, usually an embed.FS so the plugin ships inside the binary. It panics
+// if pluginPath isn't a directory in fsys.
+func NewLocalPlugin(fsys fs.FS, pluginPath string) Plugin {
+	info, err := fs.Stat(fsys, pluginPath)
+	if err != nil {
+		panic(fmt.Sprintf("yazi plugin %s: %v", pluginPath, err))
+	}
+	if !info.IsDir() {
+		panic(fmt.Sprintf("yazi plugin %s: not a directory", pluginPath))
 	}
 
-	p := Plugin{Path: pluginPath, isLocal: true}
+	src, err := fs.Sub(fsys, pluginPath)
+	if err != nil {
+		panic(fmt.Sprintf("yazi plugin %s: %v", pluginPath, err))
+	}
 
-	base := path.Base(filepath.ToSlash(p.Path))
+	p := Plugin{Path: pluginPath, isLocal: true, src: src}
+
+	base := path.Base(p.Path)
 	p.name = strings.TrimSuffix(base, path.Ext(base))
 
 	return p
@@ -92,10 +95,9 @@ func (p Plugin) installLocal(installPath string) error {
 	// 		"plugin", p.Path, "version", p.Version)
 	// }
 
-	src := os.DirFS(p.Path)
 	dst := filepath.Join(installPath, "plugins", p.Name()+".yazi")
 
-	if err := os.CopyFS(dst, src); err != nil {
+	if err := os.CopyFS(dst, p.src); err != nil {
 		return fmt.Errorf("copying yazi plugin %s: %w", p.Path, err)
 	}
 
