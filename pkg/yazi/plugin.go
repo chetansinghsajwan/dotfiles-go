@@ -2,7 +2,6 @@ package yazi
 
 import (
 	"fmt"
-	"io/fs"
 	"log/slog"
 	"os"
 	"os/exec"
@@ -30,74 +29,68 @@ type Plugin struct {
 }
 
 func NewPlugin(pluginPath, version string) Plugin {
-	p := Plugin{Path: pluginPath, Version: version}
-	p.isLocal = strings.HasPrefix(pluginPath, "./") || filepath.IsAbs(pluginPath)
+	p := Plugin{Path: pluginPath, Version: version, isLocal: false}
 
-	if p.isLocal {
-		base := path.Base(filepath.ToSlash(p.Path))
-		p.name = strings.TrimSuffix(base, path.Ext(base))
-	} else {
-		p.name = path.Base(filepath.ToSlash(p.Path))
+	if strings.HasPrefix(pluginPath, "./") || filepath.IsAbs(pluginPath) {
+		panic("local plugins must be specified with a relative path")
 	}
+
+	p.name = path.Base(filepath.ToSlash(p.Path))
 
 	return p
 }
 
-func (y Plugin) Name() string {
-	return y.name
+func NewLocalPlugin(pluginPath string) Plugin {
+	p := Plugin{Path: pluginPath, isLocal: true}
+
+	base := path.Base(filepath.ToSlash(p.Path))
+	p.name = strings.TrimSuffix(base, path.Ext(base))
+
+	return p
+}
+
+func (p Plugin) Name() string {
+	return p.name
 }
 
 // IsLocal reports whether the plugin is a local directory rather than a
 // GitHub package id. Relative paths count as local so they're rejected with
 // a clear error instead of being passed to `ya pkg`.
-func (y Plugin) IsLocal() bool {
-	return y.isLocal
+func (p Plugin) IsLocal() bool {
+	return p.isLocal
 }
 
-func (y Plugin) Install(path string) error {
+func (p Plugin) Install(installPath string) error {
+	if p.IsLocal() {
+		return p.installLocal(installPath)
+	}
 
+	return p.installRemote(installPath)
 }
 
-func (p *Package) installPlugins(log *slog.Logger, storePath string) error {
-	var upstream []Plugin
-	for _, plugin := range p.Plugins {
-		if !plugin.IsLocal() {
-			upstream = append(upstream, plugin)
-			continue
-		}
+func (p Plugin) installLocal(installPath string) error {
 
-		if plugin.Version != "" {
-			log.Warn("Local plugins aren't versioned; ignoring Version.",
-				"plugin", plugin.Path, "version", plugin.Version)
-		}
+	// if p.Version != "" {
+	// 	log.Warn("Local plugins aren't versioned; ignoring Version.",
+	// 		"plugin", p.Path, "version", p.Version)
+	// }
 
-		src, err := localSource(plugin.Path)
-		if err != nil {
-			return err
-		}
-
-		dst := filepath.Join(storePath, "plugins", plugin.Name()+".yazi")
-
-		log.Debug("Installing plugin...", "plugin", plugin.Path)
-		if err := os.CopyFS(dst, src); err != nil {
-			return fmt.Errorf("copying yazi plugin %s: %w", plugin.Path, err)
-		}
+	if !filepath.IsAbs(p.Path) {
+		return fmt.Errorf("yazi plugin %s: local paths must be absolute; use paths.Rel", p.Path)
 	}
 
-	if len(upstream) == 0 {
-		return nil
+	src := os.DirFS(p.Path)
+	dst := filepath.Join(installPath, "plugins", p.Name()+".yazi")
+
+	if err := os.CopyFS(dst, src); err != nil {
+		return fmt.Errorf("copying yazi plugin %s: %w", p.Path, err)
 	}
 
-	return installRemotePlugins(log, storePath, upstream)
+	return nil
 }
 
-// localSource opens a local plugin directory.
-func localSource(pluginPath string) (fs.FS, error) {
-	if !filepath.IsAbs(pluginPath) {
-		return nil, fmt.Errorf("yazi plugin %s: local paths must be absolute; use paths.Rel", pluginPath)
-	}
+func (p Plugin) installRemote(installPath string) error {
 
-	return os.DirFS(pluginPath), nil
 }
 
 // installRemotePlugins writes package.toml and lets `ya pkg install` fetch and
