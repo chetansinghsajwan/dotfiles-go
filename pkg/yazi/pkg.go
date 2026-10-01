@@ -11,7 +11,6 @@ import (
 	"github.com/pelletier/go-toml/v2"
 
 	"dotman/config"
-	"dotman/pkg"
 	"dotman/store"
 	"dotman/theme"
 )
@@ -67,23 +66,24 @@ func (p *Package) Name() string {
 	return "yazi"
 }
 
-// Outputs installs yazi's binaries into storePath/bin and builds its config
-// directory in storePath/config, and returns where they should be linked.
+// Install installs yazi's binaries into storePath/bin, which the profile
+// puts on PATH, and builds its config directory in storePath/config, and
+// returns where it should be linked.
 // log should already be tagged with the package's name.
-func (p *Package) Outputs(log *slog.Logger, cfg config.Config, storePath string) (pkg.PackageOutputs, error) {
+func (p *Package) Install(log *slog.Logger, cfg config.Config, storePath string) error {
 	binPath := filepath.Join(storePath, "bin")
 	if err := p.installBinaries(log, binPath); err != nil {
-		return nil, err
+		return err
 	}
 
 	installPath := filepath.Join(storePath, "config")
 	if err := os.MkdirAll(installPath, store.DirPerm); err != nil {
-		return nil, err
+		return err
 	}
 
 	if len(p.Settings) > 0 {
 		if err := writeToml(log, filepath.Join(installPath, "yazi.toml"), p.Settings); err != nil {
-			return nil, err
+			return err
 		}
 	}
 
@@ -98,57 +98,40 @@ func (p *Package) Outputs(log *slog.Logger, cfg config.Config, storePath string)
 		t, err := theme.Get(themeName)
 		if err != nil {
 			log.Error("Failed to get theme.", "err", err)
-			return nil, err
+			return err
 		}
 
 		themeToml, err := colorsToYaziThemeToml(t.Colors)
 		if err != nil {
 			log.Error("Failed to convert colors to theme.", "err", err)
-			return nil, err
+			return err
 		}
 
 		if err := writeFile(log, filepath.Join(installPath, "theme.toml"), []byte(themeToml)); err != nil {
 			log.Error("Failed to write theme.", "err", err)
-			return nil, err
+			return err
 		}
 	}
 
 	if len(p.Keybinds) > 0 {
 		if err := writeToml(log, filepath.Join(installPath, "keymap.toml"), p.keymap()); err != nil {
-			return nil, err
+			return err
 		}
 	}
 
 	if p.InitLua != "" {
 		if err := writeFile(log, filepath.Join(installPath, "init.lua"), []byte(p.InitLua)); err != nil {
-			return nil, err
+			return err
 		}
 	}
 
 	for _, plugin := range p.Plugins {
 		if err := plugin.Install(log, installPath, filepath.Join(binPath, "ya")); err != nil {
-			return nil, err
+			return err
 		}
 	}
 
-	configDir, err := os.UserConfigDir()
-	if err != nil {
-		return nil, err
-	}
-
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return nil, err
-	}
-
-	outputs := pkg.PackageOutputs{
-		filepath.Join(configDir, "yazi"): installPath,
-	}
-	for _, name := range binaries {
-		outputs[filepath.Join(home, ".local", "bin", name)] = filepath.Join(binPath, name)
-	}
-
-	return outputs, nil
+	return nil
 }
 
 type keymapEntry struct {

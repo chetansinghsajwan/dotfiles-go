@@ -3,12 +3,14 @@ package main
 import (
 	"log/slog"
 	"os"
+	"path/filepath"
 	"strconv"
 
 	"dotman/config"
 	"dotman/logging"
 	"dotman/pkg"
 	yaziConfigured "dotman/pkg/yazi/configured"
+	"dotman/profile"
 	"dotman/store"
 )
 
@@ -40,10 +42,11 @@ func main() {
 		os.Exit(1)
 	}
 
+	var storePaths []string
 	for _, p := range packages {
-		log := slog.Default().With(logging.PrefixKey, p.Name())
+		slog.Info("Building package...", "pkg", p.Name())
 
-		log.Info("Building package...")
+		log := slog.Default().With(logging.PrefixKey, p.Name())
 
 		storePath, err := s.CreatePath(p.Name())
 		if err != nil {
@@ -51,7 +54,7 @@ func main() {
 			os.Exit(1)
 		}
 
-		outputs, err := p.Outputs(log, cfg, storePath)
+		err = p.Install(log, cfg, storePath)
 		if err != nil {
 			log.Error("Failed to build package.", "err", err)
 
@@ -62,6 +65,27 @@ func main() {
 			os.Exit(1)
 		}
 
-		log.Info("Built package.", "outputs", outputs)
+		storePaths = append(storePaths, storePath)
 	}
+
+	slog.Info("Building profile...")
+
+	profilePath, err := profile.Build(slog.Default(), s, storePaths)
+	if err != nil {
+		slog.Error("Failed to build profile.", "err", err)
+		os.Exit(1)
+	}
+
+	linkPath, err := profile.DefaultLinkPath()
+	if err != nil {
+		slog.Error("Failed to find profile link path.", "err", err)
+		os.Exit(1)
+	}
+
+	if err := profile.Switch(linkPath, profilePath); err != nil {
+		slog.Error("Failed to switch profile.", "err", err)
+		os.Exit(1)
+	}
+
+	slog.Info("Switched profile.", "profile", profilePath, "path", filepath.Join(linkPath, "bin"))
 }
