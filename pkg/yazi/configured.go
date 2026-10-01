@@ -1,11 +1,14 @@
 package yazi
 
 import (
-	_ "embed"
+	"embed"
 )
 
 //go:embed init.lua
 var initLua string
+
+//go:embed plugins
+var plugins embed.FS
 
 // Configured returns yazi set up the way these dotfiles use it; ported from
 // mkYazi in yazi.nix.
@@ -22,9 +25,9 @@ func NewConfigured() *Package {
 		NewPlugin("yazi-rs/plugins:piper", "7200d73"),
 		NewPlugin("dedukun/bookmarks", "9ef1254"),
 
-		NewLocalPlugin("./plugins/properties.lua"),
-		NewLocalPlugin("./plugins/places.lua"),
-		NewLocalPlugin("./plugins/linemode-toggle.yazi"),
+		NewLocalPlugin(plugins, "plugins/properties.lua"),
+		NewLocalPlugin(plugins, "plugins/places.lua"),
+		NewLocalPlugin(plugins, "plugins/linemode-toggle.yazi"),
 	}
 	p.InitLua = initLua
 
