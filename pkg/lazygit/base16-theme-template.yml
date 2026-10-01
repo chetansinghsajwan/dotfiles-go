@@ -1,0 +1,22 @@
+gui:
+  theme:
+    activeBorderColor:
+      - "{{.Base0D}}"
+      - bold
+    inactiveBorderColor:
+      - "{{.Base03}}"
+    searchingActiveBorderColor:
+      - "{{.Base04}}"
+      - bold
+    optionsTextColor:
+      - "{{.Base06}}"
+    selectedLineBgColor:
+      - "{{.Base03}}"
+    cherryPickedCommitBgColor:
+      - "{{.Base02}}"
+    cherryPickedCommitFgColor:
+      - "{{.Base03}}"
+    defaultFgColor:
+      - "{{.Base05}}"
+    unstagedChangesColor:
+      - "{{.Base08}}"

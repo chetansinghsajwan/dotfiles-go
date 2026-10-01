@@ -6,16 +6,13 @@ import (
 	"strconv"
 
 	"dotman/config"
+	"dotman/configured/lazygit"
 	"dotman/configured/yazi"
 	"dotman/logging"
 	"dotman/pkg"
 	"dotman/profile"
 	"dotman/store"
 )
-
-var packages = []pkg.Package{
-	&yazi.Yazi,
-}
 
 // devMode reports whether DOTMAN_DEV is set to a true value, like 1 or true.
 func devMode() bool {
@@ -45,6 +42,11 @@ func main() {
 	}
 
 	s := store.NewStoreWithPath(storeRoot)
+
+	var packages = []pkg.Package{
+		&yazi.Yazi,
+		&lazygit.Lazygit,
+	}
 
 	var storePaths []string
 	for _, p := range packages {
