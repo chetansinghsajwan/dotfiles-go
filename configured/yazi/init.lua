@@ -35,34 +35,36 @@ end
 -- Permissions render as three spaced, colorized rwx triplets (owner in
 -- full color, group/other dimmed, special bits highlighted) instead of a
 -- raw `ls -la` string; the rest are single dimmed spans.
-local function perm_span(ch, is_owner)
+-- On the hovered row, which is drawn reversed (th.indicator.current), the
+-- color goes on bg instead: reversal shows a cell's bg as its text color,
+-- so the bit keeps its color on the highlight instead of becoming a box.
+local function perm_span(ch, is_owner, hovered)
+    local color, bold = "darkgray", false
     if ch == "s" or ch == "S" or ch == "t" or ch == "T" then
-        return ui.Span(ch):fg("magenta"):bold()
+        color, bold = "magenta", true
+    elseif is_owner and ch == "r" then
+        color = "green"
+    elseif is_owner and ch == "w" then
+        color = "yellow"
+    elseif is_owner and ch == "x" then
+        color = "red"
     end
-    if not is_owner then
-        return ui.Span(ch):fg("darkgray")
-    end
-    if ch == "r" then
-        return ui.Span(ch):fg("green")
-    elseif ch == "w" then
-        return ui.Span(ch):fg("yellow")
-    elseif ch == "x" then
-        return ui.Span(ch):fg("red")
-    else
-        return ui.Span(ch):fg("darkgray")
-    end
+
+    local span = ui.Span(ch)
+    span = hovered and span:bg(color) or span:fg(color)
+    return bold and span:bold() or span
 end
 
-local function perm_spans(cha)
+local function perm_spans(cha, hovered)
     local bits = cha and cha:perm()
     if not bits or #bits < 10 then
-        return { ui.Span("---------"):fg("darkgray") }
+        return { perm_span("---------", false, hovered) }
     end
     bits = bits:sub(2) -- drop the leading type char (d/l/-)
 
     local spans = {}
     for i = 1, 9 do
-        spans[#spans + 1] = perm_span(bits:sub(i, i), i <= 3)
+        spans[#spans + 1] = perm_span(bits:sub(i, i), i <= 3, hovered)
         if i == 3 or i == 6 then
             spans[#spans + 1] = ui.Span(" ")
         end
@@ -101,7 +103,7 @@ end
 -- naturally fixed (perm_spans always emits 9 chars + 2 separators,
 -- fallback included); owner/size/time are padded here to match.
 local function render_perm(self)
-    return perm_spans(self._file.cha)
+    return perm_spans(self._file.cha, self._file.is_hovered)
 end
 
 -- 20 chars comfortably fits "user:group" for realistic name lengths
@@ -134,28 +136,37 @@ end
 -- Fixed left-to-right order components appear in when combined, and the
 -- order their names are joined in to name each combination.
 local COMPONENT_ORDER = {
-    { key = "perm", render = render_perm },
+    { key = "perm", render = render_perm, hover_styled = true },
     { key = "owner", render = render_owner },
     { key = "size", render = render_size },
     { key = "time", render = render_time },
 }
 
 for mask = 1, (2 ^ #COMPONENT_ORDER) - 1 do
-    local names, renders = {}, {}
+    local names, components = {}, {}
     for i, component in ipairs(COMPONENT_ORDER) do
         if (mask >> (i - 1)) & 1 == 1 then
             names[#names + 1] = component.key
-            renders[#renders + 1] = component.render
+            components[#components + 1] = component
         end
     end
 
     Linemode[table.concat(names, "_")] = function(self)
+        -- The hovered row is drawn reversed (th.indicator.current) and these
+        -- spans are drawn over it, so any fg here becomes a per-character
+        -- background box. Drop span styles on that row so the linemode
+        -- reverses uniformly with the rest of it, except for components
+        -- that style themselves for the hovered row (hover_styled).
+        local hovered = self._file.is_hovered
         local spans = {}
-        for i, render in ipairs(renders) do
+        for i, component in ipairs(components) do
             if i > 1 then
                 spans[#spans + 1] = ui.Span("  ")
             end
-            for _, span in ipairs(render(self)) do
+            for _, span in ipairs(component.render(self)) do
+                if hovered and not component.hover_styled then
+                    span:style(ui.Style())
+                end
                 spans[#spans + 1] = span
             end
         end

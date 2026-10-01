@@ -12,7 +12,3 @@ type Package interface {
 
 	Install(log *slog.Logger, cfg config.Config, storePath string) error
 }
-
-// PackageOutputs maps a target path in the user's home to the store path
-// that should be linked there.
-type PackageOutputs map[string]string

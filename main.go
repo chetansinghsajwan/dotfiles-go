@@ -6,15 +6,15 @@ import (
 	"strconv"
 
 	"dotman/config"
+	"dotman/configured/yazi"
 	"dotman/logging"
 	"dotman/pkg"
-	yaziConfigured "dotman/pkg/yazi/configured"
 	"dotman/profile"
 	"dotman/store"
 )
 
 var packages = []pkg.Package{
-	yaziConfigured.Yazi,
+	&yazi.Yazi,
 }
 
 // devMode reports whether DOTMAN_DEV is set to a true value, like 1 or true.
