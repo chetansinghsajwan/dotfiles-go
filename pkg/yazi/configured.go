@@ -19,14 +19,14 @@ func NewConfigured() *Package {
 	p.Depends = []string{"7zz", "ffmpeg"}
 
 	p.Plugins = []Plugin{
-		{Path: "yazi-rs/plugins:full-border", Version: "7200d73"},
-		{Path: "yazi-rs/plugins:toggle-pane", Version: "7200d73"},
-		{Path: "yazi-rs/plugins:piper", Version: "7200d73"},
-		{Path: "dedukun/bookmarks", Version: "9ef1254"},
+		NewPlugin("yazi-rs/plugins:full-border", "7200d73"),
+		NewPlugin("yazi-rs/plugins:toggle-pane", "7200d73"),
+		NewPlugin("yazi-rs/plugins:piper", "7200d73"),
+		NewPlugin("dedukun/bookmarks", "9ef1254"),
 
-		{Path: paths.Rel("./plugins/properties.lua")},
-		{Path: paths.Rel("./plugins/places.lua")},
-		{Path: paths.Rel("./plugins/linemode-toggle.yazi")},
+		NewLocalPlugin(paths.Rel("./plugins/properties.lua")),
+		NewLocalPlugin(paths.Rel("./plugins/places.lua")),
+		NewLocalPlugin(paths.Rel("./plugins/linemode-toggle.yazi")),
 	}
 	p.InitLua = initLua
 
