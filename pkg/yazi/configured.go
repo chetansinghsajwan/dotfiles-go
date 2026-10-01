@@ -1,13 +1,14 @@
 package yazi
 
 import (
-	_ "embed"
-
-	"dotman/paths"
+	"embed"
 )
 
 //go:embed init.lua
 var initLua string
+
+//go:embed plugins
+var plugins embed.FS
 
 // Configured returns yazi set up the way these dotfiles use it; ported from
 // mkYazi in yazi.nix.
@@ -19,14 +20,14 @@ func NewConfigured() *Package {
 	p.Depends = []string{"7zz", "ffmpeg"}
 
 	p.Plugins = []Plugin{
-		{Path: "yazi-rs/plugins:full-border", Version: "7200d73"},
-		{Path: "yazi-rs/plugins:toggle-pane", Version: "7200d73"},
-		{Path: "yazi-rs/plugins:piper", Version: "7200d73"},
-		{Path: "dedukun/bookmarks", Version: "9ef1254"},
+		NewPlugin("yazi-rs/plugins:full-border", "7200d73"),
+		NewPlugin("yazi-rs/plugins:toggle-pane", "7200d73"),
+		NewPlugin("yazi-rs/plugins:piper", "7200d73"),
+		NewPlugin("dedukun/bookmarks", "9ef1254"),
 
-		{Path: paths.Rel("./plugins/properties.lua")},
-		{Path: paths.Rel("./plugins/places.lua")},
-		{Path: paths.Rel("./plugins/linemode-toggle.yazi")},
+		NewLocalPlugin(plugins, "plugins/properties.lua"),
+		NewLocalPlugin(plugins, "plugins/places.lua"),
+		NewLocalPlugin(plugins, "plugins/linemode-toggle.yazi"),
 	}
 	p.InitLua = initLua
 
