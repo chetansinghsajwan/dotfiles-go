@@ -29,17 +29,22 @@ func main() {
 		level = slog.LevelDebug
 	}
 
-	slog.SetDefault(slog.New(logging.NewHandler(os.Stderr, level)))
+	// The store root is resolved before logging is set up so the handler can
+	// shorten paths under it.
+	storeRoot, storeErr := store.DefaultRootPath()
+
+	slog.SetDefault(slog.New(logging.NewHandler(os.Stderr, level, storeRoot)))
 
 	cfg := config.Default
 
-	slog.Info("Initializing store...")
+	slog.Info("Initializing store...", "path", storeRoot)
 
-	s, err := store.NewStore()
-	if err != nil {
-		slog.Error("Failed to initialize store.", "err", err)
+	if storeErr != nil {
+		slog.Error("Failed to initialize store.", "err", storeErr)
 		os.Exit(1)
 	}
+
+	s := store.NewStoreWithPath(storeRoot)
 
 	var storePaths []string
 	for _, p := range packages {
