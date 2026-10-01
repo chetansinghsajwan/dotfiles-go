@@ -11,6 +11,7 @@ import (
 	"github.com/pelletier/go-toml/v2"
 
 	"dotman/config"
+	"dotman/lib"
 	"dotman/store"
 	"dotman/theme"
 )
@@ -66,18 +67,22 @@ func (p *Package) Name() string {
 	return "yazi"
 }
 
-// Install installs yazi's binaries into storePath/bin, which the profile
-// puts on PATH, and builds its config directory in storePath/config, and
-// returns where it should be linked.
+// Install installs yazi's binaries into storePath/libexec, builds its config
+// directory in storePath/config, and writes wrappers into storePath/bin, which
+// the profile puts on PATH, that point the binaries at that config.
 // log should already be tagged with the package's name.
 func (p *Package) Install(log *slog.Logger, cfg config.Config, storePath string) error {
-	binPath := filepath.Join(storePath, "bin")
-	if err := p.installBinaries(log, binPath); err != nil {
+	libexecPath := filepath.Join(storePath, "libexec")
+	if err := p.installBinaries(log, libexecPath); err != nil {
 		return err
 	}
 
 	installPath := filepath.Join(storePath, "config")
 	if err := os.MkdirAll(installPath, store.DirPerm); err != nil {
+		return err
+	}
+
+	if err := writeWrappers(log, filepath.Join(storePath, "bin"), libexecPath, installPath); err != nil {
 		return err
 	}
 
@@ -126,7 +131,30 @@ func (p *Package) Install(log *slog.Logger, cfg config.Config, storePath string)
 	}
 
 	for _, plugin := range p.Plugins {
-		if err := plugin.Install(log, installPath, filepath.Join(binPath, "ya")); err != nil {
+		if err := plugin.Install(log, installPath, filepath.Join(libexecPath, "ya")); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// writeWrappers writes a wrapper into binPath for each binary in libexecPath
+// that sets YAZI_CONFIG_HOME to configPath.
+func writeWrappers(log *slog.Logger, binPath, libexecPath, configPath string) error {
+	if err := os.MkdirAll(binPath, store.DirPerm); err != nil {
+		return err
+	}
+
+	for _, name := range binaries {
+		wrap := lib.Wrap{
+			Path: filepath.Join(binPath, name),
+			Exec: filepath.Join(libexecPath, name),
+			Env:  map[string]string{"YAZI_CONFIG_HOME": configPath},
+		}
+
+		log.Debug("Writing wrapper.", "path", wrap.Path, "exec", wrap.Exec)
+		if err := lib.CreateWrap(wrap); err != nil {
 			return err
 		}
 	}

@@ -37,8 +37,8 @@ func releaseTarget() (string, error) {
 }
 
 // installBinaries downloads the yazi release p.Version for this machine,
-// checks it against p.Hashes and extracts its binaries into binPath.
-func (p *Package) installBinaries(log *slog.Logger, binPath string) error {
+// checks it against p.Hashes and extracts its binaries into dir.
+func (p *Package) installBinaries(log *slog.Logger, dir string) error {
 	if p.Version == "" {
 		return fmt.Errorf("yazi: Version isn't set")
 	}
@@ -81,14 +81,14 @@ func (p *Package) installBinaries(log *slog.Logger, binPath string) error {
 		return fmt.Errorf("opening %s: %w", url, err)
 	}
 
-	if err := os.MkdirAll(binPath, store.DirPerm); err != nil {
+	if err := os.MkdirAll(dir, store.DirPerm); err != nil {
 		return err
 	}
 
 	// The release zip holds everything under a yazi-<target>/ directory.
 	for _, name := range binaries {
 		src := "yazi-" + target + "/" + name
-		dst := filepath.Join(binPath, name)
+		dst := filepath.Join(dir, name)
 
 		log.Debug("Extracting binary.", "src", src, "dst", dst)
 		if err := extractFile(zr, src, dst); err != nil {

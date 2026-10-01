@@ -3,7 +3,6 @@ package main
 import (
 	"log/slog"
 	"os"
-	"path/filepath"
 	"strconv"
 
 	"dotman/config"
@@ -87,5 +86,5 @@ func main() {
 		os.Exit(1)
 	}
 
-	slog.Info("Switched profile.", "profile", profilePath, "path", filepath.Join(linkPath, "bin"))
+	slog.Info("Switched profile.", "profile", profilePath)
 }
