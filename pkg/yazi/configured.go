@@ -2,8 +2,6 @@ package yazi
 
 import (
 	_ "embed"
-
-	"dotman/paths"
 )
 
 //go:embed init.lua
@@ -24,9 +22,9 @@ func NewConfigured() *Package {
 		NewPlugin("yazi-rs/plugins:piper", "7200d73"),
 		NewPlugin("dedukun/bookmarks", "9ef1254"),
 
-		NewLocalPlugin(paths.Rel("./plugins/properties.lua")),
-		NewLocalPlugin(paths.Rel("./plugins/places.lua")),
-		NewLocalPlugin(paths.Rel("./plugins/linemode-toggle.yazi")),
+		NewLocalPlugin("./plugins/properties.lua"),
+		NewLocalPlugin("./plugins/places.lua"),
+		NewLocalPlugin("./plugins/linemode-toggle.yazi"),
 	}
 	p.InitLua = initLua
 
