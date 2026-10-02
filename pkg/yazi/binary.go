@@ -2,17 +2,13 @@ package yazi
 
 import (
 	"archive/zip"
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
-	"io"
 	"log/slog"
-	"net/http"
 	"os"
 	"path/filepath"
 	"runtime"
-	"time"
 
+	"dotman/lib"
 	"dotman/store"
 )
 
@@ -58,7 +54,7 @@ func (p *Package) installBinaries(log *slog.Logger, dir string) error {
 	defer tmp.Close()
 
 	log.Debug("Downloading yazi...", "url", url)
-	hash, err := download(url, tmp)
+	hash, err := lib.Download(url, tmp)
 	if err != nil {
 		return err
 	}
@@ -91,54 +87,10 @@ func (p *Package) installBinaries(log *slog.Logger, dir string) error {
 		dst := filepath.Join(dir, name)
 
 		log.Debug("Extracting binary.", "src", src, "dst", dst)
-		if err := extractFile(zr, src, dst); err != nil {
+		if err := lib.ExtractFile(zr, src, dst); err != nil {
 			return fmt.Errorf("extracting %s from %s: %w", src, url, err)
 		}
 	}
 
 	return nil
-}
-
-var httpClient = &http.Client{Timeout: 5 * time.Minute}
-
-// download writes url's body to w and returns its SHA-256 as "sha256:<hex>",
-// the format GitHub shows for release assets.
-func download(url string, w io.Writer) (string, error) {
-	resp, err := httpClient.Get(url)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("downloading %s: %s", url, resp.Status)
-	}
-
-	h := sha256.New()
-	if _, err := io.Copy(io.MultiWriter(w, h), resp.Body); err != nil {
-		return "", fmt.Errorf("downloading %s: %w", url, err)
-	}
-
-	return "sha256:" + hex.EncodeToString(h.Sum(nil)), nil
-}
-
-// extractFile writes the file name in zr to dst as an executable.
-func extractFile(zr *zip.Reader, name, dst string) error {
-	src, err := zr.Open(name)
-	if err != nil {
-		return err
-	}
-	defer src.Close()
-
-	f, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_EXCL, store.ExecPerm)
-	if err != nil {
-		return err
-	}
-
-	if _, err := io.Copy(f, src); err != nil {
-		f.Close()
-		return err
-	}
-
-	return f.Close()
 }
