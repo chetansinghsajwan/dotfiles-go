@@ -65,17 +65,21 @@ func (m *Store) CreatePath(name string) (string, error) {
 	return path, nil
 }
 
-// HashForUrl returns the hex SHA-256 of url, for naming its store path. The
-// same url always gets the same hash, so a download can be found again.
-func (m *Store) HashForUrl(url string) string {
-	sum := sha256.Sum256([]byte(url))
+// HashForUrl returns the hex SHA-256 of url and the hash its download is
+// pinned to, for naming its store path. The same pair always gets the same
+// hash, so a download can be found again, and changing the pin, or adding
+// one to an unpinned download, fetches it afresh rather than reusing a file
+// that was never checked against it.
+func (m *Store) HashForUrl(url, hash string) string {
+	sum := sha256.Sum256([]byte(url + "\x00" + hash))
 	return hex.EncodeToString(sum[:])
 }
 
-// PathForUrl returns the store path that url's download lives at. It is the
-// same for every run, so it doubles as a cache key; it may not exist yet.
-func (m *Store) PathForUrl(url string) string {
-	return filepath.Join(m.rootPath, m.HashForUrl(url)+"-"+filepath.Base(url))
+// PathForUrl returns the store path that url's download, pinned to hash,
+// lives at. It is the same for every run, so it doubles as a cache key; it
+// may not exist yet.
+func (m *Store) PathForUrl(url, hash string) string {
+	return filepath.Join(m.rootPath, m.HashForUrl(url, hash)+"-"+filepath.Base(url))
 }
 
 // CreateTempPath creates a new, empty directory in the store to build into

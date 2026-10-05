@@ -1,34 +1,40 @@
 package yazi
 
 import (
-	"errors"
 	"fmt"
 	"io/fs"
 	"log/slog"
 	"os"
-	"os/exec"
 	"path"
 	"path/filepath"
 	"strings"
 
-	"github.com/pelletier/go-toml/v2"
+	"dotman"
+	"dotman/lib"
 )
 
 type Plugin struct {
-	// Either a local directory or a GitHub package id:
+	// Either a local directory or a package id, as `ya pkg` names them:
 	//   - "plugins/places.yazi": a local directory in an fs.FS, see
 	//     NewLocalPlugin
-	//   - "yazi-rs/plugins:piper" or "dedukun/bookmarks": installed with
-	//     `ya pkg`
-	// Local plugins are deployed as plugins/<name>.yazi, where name is the
-	// directory's name without its extension.
+	//   - "yazi-rs/plugins:piper": the piper.yazi directory of the GitHub
+	//     repo yazi-rs/plugins
+	//   - "dedukun/bookmarks": the GitHub repo dedukun/bookmarks.yazi
+	// Plugins are deployed as plugins/<name>.yazi, where name is the
+	// directory's or repo's name without its extension.
 	Path string
 
-	// Git revision to pin; "" installs the latest. Unused for local plugins.
+	// Git revision to pin, e.g. a commit. Required for remote plugins, since
+	// their download is cached by it; unused for local ones.
 	Version string
 
 	name    string
 	isLocal bool
+
+	// Where a remote plugin lives: its GitHub repo and the directory in it,
+	// "" for the repo's root.
+	repo string
+	dir  string
 
 	// Contents of a local plugin's directory.
 	src fs.FS
@@ -40,8 +46,18 @@ func NewPlugin(pluginPath, version string) Plugin {
 	if strings.HasPrefix(pluginPath, "./") || filepath.IsAbs(pluginPath) {
 		panic(fmt.Sprintf("yazi plugin %s: local plugins must use NewLocalPlugin", pluginPath))
 	}
+	if version == "" {
+		panic(fmt.Sprintf("yazi plugin %s: remote plugins must pin a revision", pluginPath))
+	}
 
-	p.name = path.Base(filepath.ToSlash(p.Path))
+	if repo, child, ok := strings.Cut(pluginPath, ":"); ok {
+		p.repo = repo
+		p.dir = child + ".yazi"
+		p.name = child
+	} else {
+		p.repo = pluginPath + ".yazi"
+		p.name = path.Base(pluginPath)
+	}
 
 	return p
 }
@@ -81,18 +97,16 @@ func (p Plugin) IsLocal() bool {
 	return p.isLocal
 }
 
-// Install deploys the plugin into installPath/plugins.
 // Install deploys the plugin into the yazi config directory configPath.
-// Remote plugins are fetched with the ya binary at yaPath.
-func (p Plugin) Install(log *slog.Logger, configPath, yaPath string) error {
-
+// Remote plugins are downloaded into store first, reusing an earlier download.
+func (p Plugin) Install(log *slog.Logger, store *dotman.Store, configPath string) error {
 	if p.IsLocal() {
 		log.Debug("Installing plugin...", "plugin", p.Path)
 		return p.installLocal(configPath)
 	}
 
 	log.Debug("Installing plugin...", "plugin", p.Path, "version", p.Version)
-	return p.installRemote(log, configPath, yaPath)
+	return p.installRemote(store, configPath)
 }
 
 func (p Plugin) installLocal(installPath string) error {
@@ -105,69 +119,21 @@ func (p Plugin) installLocal(installPath string) error {
 	return nil
 }
 
-// installRemote adds the plugin to installPath/package.toml and lets
-// `ya pkg install` fetch and deploy it into installPath/plugins. `ya pkg add`
-// can't pin a revision, hence editing package.toml directly.
-func (p Plugin) installRemote(log *slog.Logger, installPath, yaPath string) error {
-	pkgPath := filepath.Join(installPath, "package.toml")
-
-	pkgs, err := readPackageToml(pkgPath)
+// installRemote downloads the source archive of p.repo at p.Version and
+// deploys its p.dir into installPath/plugins.
+func (p Plugin) installRemote(store *dotman.Store, installPath string) error {
+	// TODO: pin the archive's hash. GitHub doesn't promise byte-stable source
+	// archives, so a pin may need refreshing, but it'd catch tampering.
+	url := lib.GetGithubArchiveUrl(p.repo, p.Version)
+	archivePath, err := lib.DownloadFile(store, url, "")
 	if err != nil {
-		return err
+		return fmt.Errorf("downloading yazi plugin %s: %w", p.Path, err)
 	}
 
-	dep := packageDep{Use: p.Path, Rev: p.Version}
-	replaced := false
-	for i, d := range pkgs.Plugin.Deps {
-		if d.Use != p.Path {
-			continue
-		}
-
-		// ya records a hash of what it deployed; keep it only if the
-		// revision is unchanged.
-		if d.Rev == p.Version {
-			dep.Hash = d.Hash
-		}
-		pkgs.Plugin.Deps[i] = dep
-		replaced = true
-	}
-	if !replaced {
-		pkgs.Plugin.Deps = append(pkgs.Plugin.Deps, dep)
-	}
-
-	if err := writeToml(log, pkgPath, pkgs); err != nil {
-		return err
-	}
-
-	cmd := exec.Command(yaPath, "pkg", "install")
-	cmd.Env = append(os.Environ(), "YAZI_CONFIG_HOME="+installPath)
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("ya pkg install %s: %w\n%s", p.Path, err, out)
+	dst := filepath.Join(installPath, "plugins", p.Name()+".yazi")
+	if err := lib.ExtractTarGzDir(archivePath, p.dir, dst); err != nil {
+		return fmt.Errorf("extracting yazi plugin %s: %w", p.Path, err)
 	}
 
 	return nil
-}
-
-// readPackageToml reads ya's package.toml, returning an empty one if it
-// doesn't exist yet.
-func readPackageToml(path string) (packageToml, error) {
-	var pkgs packageToml
-
-	b, err := os.ReadFile(path)
-	if err != nil && !errors.Is(err, fs.ErrNotExist) {
-		return pkgs, err
-	}
-
-	if err == nil {
-		if err := toml.Unmarshal(b, &pkgs); err != nil {
-			return pkgs, fmt.Errorf("parsing %s: %w", path, err)
-		}
-	}
-
-	if pkgs.Flavor.Deps == nil {
-		pkgs.Flavor.Deps = []packageDep{}
-	}
-
-	return pkgs, nil
 }

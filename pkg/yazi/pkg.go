@@ -32,7 +32,7 @@ type Package struct {
 	// Overrides the global config's theme; "" uses it.
 	Theme string
 
-	// Upstream plugins are installed with `ya pkg`; local ones are copied.
+	// Upstream plugins are downloaded from GitHub; local ones are copied.
 	Plugins []Plugin
 
 	// Prepended to yazi's default keymap in keymap.toml.
@@ -130,7 +130,7 @@ func (p *Package) Install(log *slog.Logger, cfg dotman.Config, store *dotman.Sto
 	}
 
 	for _, plugin := range p.Plugins {
-		if err := plugin.Install(log, installPath, filepath.Join(libexecPath, "ya")); err != nil {
+		if err := plugin.Install(log, store, installPath); err != nil {
 			return err
 		}
 	}
@@ -186,21 +186,6 @@ func (p *Package) keymap() map[string]map[string][]keymapEntry {
 	}
 
 	return keymap
-}
-
-type packageToml struct {
-	Plugin struct {
-		Deps []packageDep `toml:"deps"`
-	} `toml:"plugin"`
-	Flavor struct {
-		Deps []packageDep `toml:"deps"`
-	} `toml:"flavor"`
-}
-
-type packageDep struct {
-	Use  string `toml:"use"`
-	Rev  string `toml:"rev,omitempty"`
-	Hash string `toml:"hash,omitempty"`
 }
 
 func writeToml(log *slog.Logger, path string, v any) error {

@@ -4,6 +4,7 @@ import (
 	"archive/tar"
 	"compress/gzip"
 	_ "embed"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -23,6 +24,12 @@ type Settings map[string]any
 
 type Package struct {
 	Version string
+
+	// SHA-256 of the release tar.gz for each <platform>_<arch>, as the
+	// release's checksums.txt names them, e.g. "linux_x86_64":
+	// "sha256:02be...". Installing on a target without a hash fails and
+	// reports the downloaded archive's hash.
+	Hashes map[string]string
 
 	// Overrides the global config's theme; "" uses it.
 	Theme string
@@ -51,7 +58,7 @@ func (p *Package) Install(log *slog.Logger, cfg dotman.Config, store *dotman.Sto
 	}
 
 	lazygitUnwrappedPath := filepath.Join(binPath, "lazygit-unwrapped")
-	if err := DownloadLazygit(store, p.Version, lazygitUnwrappedPath); err != nil {
+	if err := DownloadLazygit(store, p.Version, p.Hashes, lazygitUnwrappedPath); err != nil {
 		log.Error("Failed to download lazygit.", "err", err)
 		return err
 	}
@@ -143,29 +150,44 @@ func writeThemeYaml(colors dotman.Base16Colors, path string) error {
 }
 
 // DownloadLazygit maps GOARCH to the arch name lazygit's release assets use
-// (e.g. "amd64" -> "x86_64") before downloading.
-func DownloadLazygit(store *dotman.Store, version string, dest string) error {
+// (e.g. "amd64" -> "x86_64") and picks this machine's hash out of hashes
+// before downloading.
+func DownloadLazygit(store *dotman.Store, version string, hashes map[string]string, dest string) error {
 	arch := lib.GetArch()
 	if arch == "amd64" {
 		arch = "x86_64"
 	}
+	platform := lib.GetPlatform()
+	target := platform + "_" + arch
 
-	return DownloadLazygitFor(store, version, arch, lib.GetPlatform(), dest)
+	// Without a pin, FakeHash makes the download fail with the hash to pin.
+	hash, pinned := hashes[target]
+	if !pinned {
+		hash = lib.FakeHash
+	}
+
+	err := DownloadLazygitFor(store, version, arch, platform, hash, dest)
+	if mismatch, ok := errors.AsType[*lib.HashMismatchError](err); ok && !pinned {
+		return fmt.Errorf("lazygit %s: no hash pinned for %s; got %s", version, target, mismatch.Got)
+	}
+
+	return err
 }
 
 // DownloadLazygitFor downloads the lazygit release asset for arch/platform
-// into the store, reusing an earlier download, and extracts the lazygit
-// binary out of its tar.gz into dest.
-func DownloadLazygitFor(store *dotman.Store, version string, arch string, platform string, dest string) error {
+// into the store, reusing an earlier download and checking it against hash,
+// and extracts the lazygit binary out of its tar.gz into dest.
+func DownloadLazygitFor(store *dotman.Store, version string, arch string, platform string, hash string, dest string) error {
 	asset := "lazygit_" + version + "_" + platform + "_" + arch + ".tar.gz"
 
-	archivePath, _, err := lib.DownloadGithubReleaseFile(store, lib.GithubRelease{
+	archivePath, err := lib.DownloadGithubRelease(store, lib.GithubRelease{
 		Repo:  "jesseduffield/lazygit",
 		Tag:   "v" + version,
 		Asset: asset,
+		Hash:  hash,
 	})
 	if err != nil {
-		return err
+		return fmt.Errorf("lazygit %s: %w", version, err)
 	}
 
 	archive, err := os.Open(archivePath)

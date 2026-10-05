@@ -2,6 +2,7 @@ package yazi
 
 import (
 	"archive/zip"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -33,8 +34,8 @@ func releaseTarget() (string, error) {
 }
 
 // installBinaries downloads the yazi release p.Version for this machine into
-// the store, reusing an earlier download, checks it against p.Hashes and
-// extracts its binaries into dir.
+// the store, reusing an earlier download and checking it against p.Hashes,
+// and extracts its binaries into dir.
 func (p *Package) installBinaries(log *slog.Logger, store *dotman.Store, dir string) error {
 	if p.Version == "" {
 		return fmt.Errorf("yazi: Version isn't set")
@@ -45,27 +46,27 @@ func (p *Package) installBinaries(log *slog.Logger, store *dotman.Store, dir str
 		return err
 	}
 
+	// Without a pin, FakeHash makes the download fail with the hash to pin.
+	hash, pinned := p.Hashes[target]
+	if !pinned {
+		hash = lib.FakeHash
+	}
+
 	release := lib.GithubRelease{
 		Repo:  "sxyazi/yazi",
 		Tag:   p.Version,
 		Asset: "yazi-" + target + ".zip",
+		Hash:  hash,
 	}
-	url := lib.GetGithubUrl(release.Repo, release.Tag, release.Asset)
 
-	log.Debug("Downloading yazi...", "url", url)
-	archivePath, hash, err := lib.DownloadGithubReleaseFile(store, release)
+	log.Debug("Downloading yazi...", "url", lib.GetGithubUrl(release.Repo, release.Tag, release.Asset))
+	archivePath, err := lib.DownloadGithubRelease(store, release)
 	if err != nil {
-		return err
-	}
+		if mismatch, ok := errors.AsType[*lib.HashMismatchError](err); ok && !pinned {
+			return fmt.Errorf("yazi %s: no hash pinned for %s; got %s", p.Version, target, mismatch.Got)
+		}
 
-	want, ok := p.Hashes[target]
-	if !ok {
-		return fmt.Errorf("yazi %s: no hash pinned for %s; got %s", p.Version, target, hash)
-	}
-	if hash != want {
-		// Drop the cached download so the next run fetches it again.
-		store.RemovePath(store.PathForUrl(url))
-		return fmt.Errorf("yazi %s: hash mismatch for %s: want %s, got %s", p.Version, target, want, hash)
+		return fmt.Errorf("yazi %s for %s: %w", p.Version, target, err)
 	}
 
 	zr, err := zip.OpenReader(archivePath)
@@ -85,7 +86,7 @@ func (p *Package) installBinaries(log *slog.Logger, store *dotman.Store, dir str
 
 		log.Debug("Extracting binary.", "src", src, "dst", dst)
 		if err := lib.ExtractFile(&zr.Reader, src, dst); err != nil {
-			return fmt.Errorf("extracting %s from %s: %w", src, url, err)
+			return fmt.Errorf("extracting %s from %s: %w", src, archivePath, err)
 		}
 	}
 
