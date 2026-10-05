@@ -1,6 +1,13 @@
 package zellij
 
-import "dotman/pkg/zellij"
+import (
+	_ "embed"
+
+	"dotman/pkg/zellij"
+)
+
+//go:embed config.kdl
+var configKdl string
 
 var Zellij = zellij.Zellij{
 	Version: "0.45.1",
@@ -10,5 +17,6 @@ var Zellij = zellij.Zellij{
 		"x86_64-apple-darwin":        "sha256:8e8bea22737d1652278c51fc5c26c7c22c9855d0ebb9634a84b8873823093114",
 		"aarch64-apple-darwin":       "sha256:c029ba4fe1927b79ad9f0cdd59155c4dff80777863c85857d4d09b88b56f9891",
 	},
+	ConfigKdl:    configKdl,
 	ShellAliases: []string{"z"},
 }

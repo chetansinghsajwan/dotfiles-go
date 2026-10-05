@@ -1,8 +1,10 @@
 package lib
 
 import (
+	"fmt"
 	"maps"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 
@@ -47,6 +49,23 @@ func CreateWrap(wrap Wrap) error {
 	b.WriteString(" \"$@\"\n")
 
 	return os.WriteFile(wrap.Path, []byte(b.String()), dotman.ExecPerm)
+}
+
+// CreateShellAliases writes a wrapper into binPath for each of aliases that
+// runs exec, so each alias is a command on PATH, in every shell and to every
+// program, once the profile links binPath in.
+func CreateShellAliases(binPath, exec string, aliases []string) error {
+	for _, alias := range aliases {
+		if alias == "" || strings.ContainsRune(alias, '/') {
+			return fmt.Errorf("invalid shell alias %q for %s", alias, exec)
+		}
+
+		if err := CreateWrap(Wrap{Path: filepath.Join(binPath, alias), Exec: exec}); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // shellQuote quotes s as a single POSIX shell word.

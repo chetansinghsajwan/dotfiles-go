@@ -1,0 +1,18 @@
+// Maps base16 onto zellij's 11-color theme format. bg is the background of
+// selected and highlighted UI, not the terminal's, so it takes the selection
+// shade base02 rather than base00.
+themes {
+    {{.Name}} {
+        fg "{{.Colors.Base05}}"
+        bg "{{.Colors.Base02}}"
+        black "{{.Colors.Base00}}"
+        red "{{.Colors.Base08}}"
+        green "{{.Colors.Base0B}}"
+        yellow "{{.Colors.Base0A}}"
+        blue "{{.Colors.Base0D}}"
+        magenta "{{.Colors.Base0E}}"
+        cyan "{{.Colors.Base0C}}"
+        white "{{.Colors.Base07}}"
+        orange "{{.Colors.Base09}}"
+    }
+}

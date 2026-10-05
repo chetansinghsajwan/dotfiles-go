@@ -16,7 +16,10 @@ import (
 )
 
 type Package struct {
-	Aliases []string
+	// Other names to run yazi by, e.g. "y". Each is written as a command
+	// into bin, next to yazi's wrapper, rather than as an alias in a shell's
+	// config, so it can't cd the shell into yazi's last directory.
+	ShellAliases []string
 
 	// Release tag of yazi to install, e.g. "v26.9.1".
 	Version string
@@ -82,6 +85,11 @@ func (p *Package) Install(log *slog.Logger, cfg dotman.Config, store *dotman.Sto
 	}
 
 	if err := writeWrappers(log, filepath.Join(storePath, "bin"), libexecPath, installPath); err != nil {
+		return err
+	}
+
+	yaziPath := filepath.Join(storePath, "bin", "yazi")
+	if err := lib.CreateShellAliases(filepath.Join(storePath, "bin"), yaziPath, p.ShellAliases); err != nil {
 		return err
 	}
 
