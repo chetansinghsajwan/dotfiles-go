@@ -70,9 +70,9 @@ func (p *Package) Name() string {
 // directory in storePath/config, and writes wrappers into storePath/bin, which
 // the profile puts on PATH, that point the binaries at that config.
 // log should already be tagged with the package's name.
-func (p *Package) Install(log *slog.Logger, cfg dotman.Config, storePath string) error {
+func (p *Package) Install(log *slog.Logger, cfg dotman.Config, store *dotman.Store, storePath string) error {
 	libexecPath := filepath.Join(storePath, "libexec")
-	if err := p.installBinaries(log, libexecPath); err != nil {
+	if err := p.installBinaries(log, store, libexecPath); err != nil {
 		return err
 	}
 

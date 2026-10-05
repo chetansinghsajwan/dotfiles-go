@@ -41,7 +41,7 @@ func (p *Package) Name() string {
 // Install downloads lazygit's binary into storePath/bin and writes its
 // config (settings and theme) into storePath/config, then wraps the binary
 // to point LG_CONFIG_FILE at that config.
-func (p *Package) Install(log *slog.Logger, cfg dotman.Config, storePath string) error {
+func (p *Package) Install(log *slog.Logger, cfg dotman.Config, store *dotman.Store, storePath string) error {
 	log.Info("Installing lazygit...", "version", p.Version)
 
 	binPath := filepath.Join(storePath, "bin")
@@ -51,7 +51,7 @@ func (p *Package) Install(log *slog.Logger, cfg dotman.Config, storePath string)
 	}
 
 	lazygitUnwrappedPath := filepath.Join(binPath, "lazygit-unwrapped")
-	if err := DownloadLazygit(p.Version, lazygitUnwrappedPath); err != nil {
+	if err := DownloadLazygit(store, p.Version, lazygitUnwrappedPath); err != nil {
 		log.Error("Failed to download lazygit.", "err", err)
 		return err
 	}
@@ -144,42 +144,42 @@ func writeThemeYaml(colors dotman.Base16Colors, path string) error {
 
 // DownloadLazygit maps GOARCH to the arch name lazygit's release assets use
 // (e.g. "amd64" -> "x86_64") before downloading.
-func DownloadLazygit(version string, dest string) error {
+func DownloadLazygit(store *dotman.Store, version string, dest string) error {
 	arch := lib.GetArch()
 	if arch == "amd64" {
 		arch = "x86_64"
 	}
 
-	return DownloadLazygitFor(version, arch, lib.GetPlatform(), dest)
+	return DownloadLazygitFor(store, version, arch, lib.GetPlatform(), dest)
 }
 
 // DownloadLazygitFor downloads the lazygit release asset for arch/platform
-// and extracts the lazygit binary out of its tar.gz into dest.
-func DownloadLazygitFor(version string, arch string, platform string, dest string) error {
+// into the store, reusing an earlier download, and extracts the lazygit
+// binary out of its tar.gz into dest.
+func DownloadLazygitFor(store *dotman.Store, version string, arch string, platform string, dest string) error {
 	asset := "lazygit_" + version + "_" + platform + "_" + arch + ".tar.gz"
 
-	tmp, err := os.CreateTemp("", "lazygit-*.tar.gz")
+	archivePath, _, err := lib.DownloadGithubReleaseFile(store, lib.GithubRelease{
+		Repo:  "jesseduffield/lazygit",
+		Tag:   "v" + version,
+		Asset: asset,
+	})
 	if err != nil {
 		return err
 	}
-	defer os.Remove(tmp.Name())
-	defer tmp.Close()
 
-	url := lib.GetGithubUrl("jesseduffield/lazygit", "v"+version, asset)
-	if _, err := lib.Download(url, tmp); err != nil {
+	archive, err := os.Open(archivePath)
+	if err != nil {
 		return err
 	}
-
-	if _, err := tmp.Seek(0, io.SeekStart); err != nil {
-		return err
-	}
+	defer archive.Close()
 
 	if err := os.MkdirAll(filepath.Dir(dest), dotman.DirPerm); err != nil {
 		return err
 	}
 
-	if err := extractLazygitBinary(tmp, dest); err != nil {
-		return fmt.Errorf("extracting lazygit from %s: %w", url, err)
+	if err := extractLazygitBinary(archive, dest); err != nil {
+		return fmt.Errorf("extracting lazygit from %s: %w", archivePath, err)
 	}
 
 	return nil

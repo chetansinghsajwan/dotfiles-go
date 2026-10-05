@@ -57,7 +57,7 @@ func main() {
 			os.Exit(1)
 		}
 
-		err = p.Install(log, cfg, storePath)
+		err = p.Install(log, cfg, s, storePath)
 		if err != nil {
 			log.Error("Failed to build package.", "err", err)
 

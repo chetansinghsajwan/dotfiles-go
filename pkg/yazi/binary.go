@@ -2,13 +2,13 @@ package yazi
 
 import (
 	"archive/zip"
-	"dotman"
 	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
 	"runtime"
 
+	"dotman"
 	"dotman/lib"
 )
 
@@ -32,9 +32,10 @@ func releaseTarget() (string, error) {
 	return "", fmt.Errorf("no yazi release for %s/%s", runtime.GOOS, runtime.GOARCH)
 }
 
-// installBinaries downloads the yazi release p.Version for this machine,
-// checks it against p.Hashes and extracts its binaries into dir.
-func (p *Package) installBinaries(log *slog.Logger, dir string) error {
+// installBinaries downloads the yazi release p.Version for this machine into
+// the store, reusing an earlier download, checks it against p.Hashes and
+// extracts its binaries into dir.
+func (p *Package) installBinaries(log *slog.Logger, store *dotman.Store, dir string) error {
 	if p.Version == "" {
 		return fmt.Errorf("yazi: Version isn't set")
 	}
@@ -44,17 +45,15 @@ func (p *Package) installBinaries(log *slog.Logger, dir string) error {
 		return err
 	}
 
-	url := fmt.Sprintf("https://github.com/sxyazi/yazi/releases/download/%s/yazi-%s.zip", p.Version, target)
-
-	tmp, err := os.CreateTemp("", "yazi-*.zip")
-	if err != nil {
-		return err
+	release := lib.GithubRelease{
+		Repo:  "sxyazi/yazi",
+		Tag:   p.Version,
+		Asset: "yazi-" + target + ".zip",
 	}
-	defer os.Remove(tmp.Name())
-	defer tmp.Close()
+	url := lib.GetGithubUrl(release.Repo, release.Tag, release.Asset)
 
 	log.Debug("Downloading yazi...", "url", url)
-	hash, err := lib.Download(url, tmp)
+	archivePath, hash, err := lib.DownloadGithubReleaseFile(store, release)
 	if err != nil {
 		return err
 	}
@@ -64,18 +63,16 @@ func (p *Package) installBinaries(log *slog.Logger, dir string) error {
 		return fmt.Errorf("yazi %s: no hash pinned for %s; got %s", p.Version, target, hash)
 	}
 	if hash != want {
+		// Drop the cached download so the next run fetches it again.
+		store.RemovePath(store.PathForUrl(url))
 		return fmt.Errorf("yazi %s: hash mismatch for %s: want %s, got %s", p.Version, target, want, hash)
 	}
 
-	info, err := tmp.Stat()
+	zr, err := zip.OpenReader(archivePath)
 	if err != nil {
-		return err
+		return fmt.Errorf("opening %s: %w", archivePath, err)
 	}
-
-	zr, err := zip.NewReader(tmp, info.Size())
-	if err != nil {
-		return fmt.Errorf("opening %s: %w", url, err)
-	}
+	defer zr.Close()
 
 	if err := os.MkdirAll(dir, dotman.DirPerm); err != nil {
 		return err
@@ -87,7 +84,7 @@ func (p *Package) installBinaries(log *slog.Logger, dir string) error {
 		dst := filepath.Join(dir, name)
 
 		log.Debug("Extracting binary.", "src", src, "dst", dst)
-		if err := lib.ExtractFile(zr, src, dst); err != nil {
+		if err := lib.ExtractFile(&zr.Reader, src, dst); err != nil {
 			return fmt.Errorf("extracting %s from %s: %w", src, url, err)
 		}
 	}
