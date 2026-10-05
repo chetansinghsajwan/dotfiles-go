@@ -1,4 +1,4 @@
-package theme
+package dotman
 
 type Variant string
 

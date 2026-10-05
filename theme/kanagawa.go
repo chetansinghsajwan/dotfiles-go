@@ -1,9 +1,11 @@
 package theme
 
-var Kanagawa = Theme{
+import "dotman"
+
+var Kanagawa = dotman.Theme{
 	Name:    "kanagawa",
-	Variant: VariantDark,
-	Colors: Base16Colors{
+	Variant: dotman.VariantDark,
+	Colors: dotman.Base16Colors{
 		Base00: "#1f1f28",
 		Base01: "#16161d",
 		Base02: "#223249",

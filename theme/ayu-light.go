@@ -1,9 +1,11 @@
 package theme
 
-var AyuLight = Theme{
+import "dotman"
+
+var AyuLight = dotman.Theme{
 	Name:    "ayu-light",
-	Variant: VariantLight,
-	Colors: Base16Colors{
+	Variant: dotman.VariantLight,
+	Colors: dotman.Base16Colors{
 		Base00: "#f8f9fa",
 		Base01: "#edeff1",
 		Base02: "#d2d4d8",

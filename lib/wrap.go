@@ -6,7 +6,7 @@ import (
 	"slices"
 	"strings"
 
-	"dotman/store"
+	"dotman"
 )
 
 // Wrap describes a script that runs Exec with extra environment and leading
@@ -46,7 +46,7 @@ func CreateWrap(wrap Wrap) error {
 	}
 	b.WriteString(" \"$@\"\n")
 
-	return os.WriteFile(wrap.Path, []byte(b.String()), store.ExecPerm)
+	return os.WriteFile(wrap.Path, []byte(b.String()), dotman.ExecPerm)
 }
 
 // shellQuote quotes s as a single POSIX shell word.

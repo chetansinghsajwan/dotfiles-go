@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"dotman/store"
+	"dotman"
 )
 
 var httpClient = &http.Client{Timeout: 5 * time.Minute}
@@ -40,7 +40,7 @@ func Download(url string, w io.Writer) (string, error) {
 // The body is written to a temp file next to dest and renamed into place, so
 // dest never holds a partial download.
 func DownloadFile(url string, dest string) (string, error) {
-	if err := os.MkdirAll(filepath.Dir(dest), store.DirPerm); err != nil {
+	if err := os.MkdirAll(filepath.Dir(dest), dotman.DirPerm); err != nil {
 		return "", err
 	}
 
@@ -60,7 +60,7 @@ func DownloadFile(url string, dest string) (string, error) {
 		return "", err
 	}
 
-	if err := os.Chmod(tmp.Name(), store.FilePerm); err != nil {
+	if err := os.Chmod(tmp.Name(), dotman.FilePerm); err != nil {
 		return "", err
 	}
 

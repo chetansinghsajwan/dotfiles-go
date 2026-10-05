@@ -1,9 +1,11 @@
 package theme
 
-var CatppuccinMacchiato = Theme{
+import "dotman"
+
+var CatppuccinMacchiato = dotman.Theme{
 	Name:    "catppuccin-macchiato",
-	Variant: VariantDark,
-	Colors: Base16Colors{
+	Variant: dotman.VariantDark,
+	Colors: dotman.Base16Colors{
 		Base00: "#24273a",
 		Base01: "#1e2030",
 		Base02: "#363a4f",

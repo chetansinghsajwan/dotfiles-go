@@ -1,9 +1,11 @@
 package theme
 
-var Nord = Theme{
+import "dotman"
+
+var Nord = dotman.Theme{
 	Name:    "nord",
-	Variant: VariantDark,
-	Colors: Base16Colors{
+	Variant: dotman.VariantDark,
+	Colors: dotman.Base16Colors{
 		Base00: "#2e3440",
 		Base01: "#3b4252",
 		Base02: "#434c5e",

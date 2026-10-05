@@ -1,10 +1,10 @@
 // Package config holds settings shared by all packages.
-package config
+package dotman
 
 type Config struct {
 	Theme string
 }
 
-var Default = Config{
+var DefaultConfig = Config{
 	Theme: "ayu-dark",
 }

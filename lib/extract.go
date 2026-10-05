@@ -2,7 +2,7 @@ package lib
 
 import (
 	"archive/zip"
-	"dotman/store"
+	"dotman"
 	"io"
 	"os"
 )
@@ -15,7 +15,7 @@ func ExtractFile(zr *zip.Reader, name, dst string) error {
 	}
 	defer src.Close()
 
-	f, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_EXCL, store.ExecPerm)
+	f, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_EXCL, dotman.ExecPerm)
 	if err != nil {
 		return err
 	}

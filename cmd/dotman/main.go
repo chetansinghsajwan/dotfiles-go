@@ -5,13 +5,10 @@ import (
 	"os"
 	"strconv"
 
-	"dotman/config"
+	"dotman"
 	"dotman/configured/lazygit"
 	"dotman/configured/yazi"
 	"dotman/logging"
-	"dotman/pkg"
-	"dotman/profile"
-	"dotman/store"
 )
 
 // devMode reports whether DOTMAN_DEV is set to a true value, like 1 or true.
@@ -28,11 +25,11 @@ func main() {
 
 	// The store root is resolved before logging is set up so the handler can
 	// shorten paths under it.
-	storeRoot, storeErr := store.DefaultRootPath()
+	storeRoot, storeErr := dotman.DefaultStorePath()
 
 	slog.SetDefault(slog.New(logging.NewHandler(os.Stderr, level, storeRoot)))
 
-	cfg := config.Default
+	cfg := dotman.DefaultConfig
 
 	slog.Info("Initializing store...", "path", storeRoot)
 
@@ -41,9 +38,9 @@ func main() {
 		os.Exit(1)
 	}
 
-	s := store.NewStoreWithPath(storeRoot)
+	s := dotman.NewStoreWithPath(storeRoot)
 
-	var packages = []pkg.Package{
+	var packages = []dotman.Package{
 		&yazi.Yazi,
 		&lazygit.Lazygit,
 	}
@@ -76,19 +73,19 @@ func main() {
 
 	slog.Info("Building profile...")
 
-	profilePath, err := profile.Build(slog.Default(), s, storePaths)
+	profilePath, err := dotman.BuildProfile(slog.Default(), s, storePaths)
 	if err != nil {
 		slog.Error("Failed to build profile.", "err", err)
 		os.Exit(1)
 	}
 
-	linkPath, err := profile.DefaultLinkPath()
+	linkPath, err := dotman.DefaultLinkPath()
 	if err != nil {
 		slog.Error("Failed to find profile link path.", "err", err)
 		os.Exit(1)
 	}
 
-	if err := profile.Switch(linkPath, profilePath); err != nil {
+	if err := dotman.SwitchProfile(linkPath, profilePath); err != nil {
 		slog.Error("Failed to switch profile.", "err", err)
 		os.Exit(1)
 	}

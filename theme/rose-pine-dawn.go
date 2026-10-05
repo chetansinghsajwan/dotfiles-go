@@ -1,9 +1,11 @@
 package theme
 
-var RosePineDawn = Theme{
+import "dotman"
+
+var RosePineDawn = dotman.Theme{
 	Name:    "rose-pine-dawn",
-	Variant: VariantLight,
-	Colors: Base16Colors{
+	Variant: dotman.VariantLight,
+	Colors: dotman.Base16Colors{
 		Base00: "#faf4ed",
 		Base01: "#fffaf3",
 		Base02: "#f2e9de",

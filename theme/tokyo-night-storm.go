@@ -1,9 +1,11 @@
 package theme
 
-var TokyoNightStorm = Theme{
+import "dotman"
+
+var TokyoNightStorm = dotman.Theme{
 	Name:    "tokyo-night-storm",
-	Variant: VariantDark,
-	Colors: Base16Colors{
+	Variant: dotman.VariantDark,
+	Colors: dotman.Base16Colors{
 		Base00: "#24283b",
 		Base01: "#16161e",
 		Base02: "#343a52",

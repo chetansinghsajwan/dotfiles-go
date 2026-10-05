@@ -1,6 +1,7 @@
 package yazi
 
 import (
+	"dotman"
 	_ "embed"
 	"log/slog"
 	"os"
@@ -10,9 +11,7 @@ import (
 
 	"github.com/pelletier/go-toml/v2"
 
-	"dotman/config"
 	"dotman/lib"
-	"dotman/store"
 	"dotman/theme"
 )
 
@@ -71,14 +70,14 @@ func (p *Package) Name() string {
 // directory in storePath/config, and writes wrappers into storePath/bin, which
 // the profile puts on PATH, that point the binaries at that config.
 // log should already be tagged with the package's name.
-func (p *Package) Install(log *slog.Logger, cfg config.Config, storePath string) error {
+func (p *Package) Install(log *slog.Logger, cfg dotman.Config, storePath string) error {
 	libexecPath := filepath.Join(storePath, "libexec")
 	if err := p.installBinaries(log, libexecPath); err != nil {
 		return err
 	}
 
 	installPath := filepath.Join(storePath, "config")
-	if err := os.MkdirAll(installPath, store.DirPerm); err != nil {
+	if err := os.MkdirAll(installPath, dotman.DirPerm); err != nil {
 		return err
 	}
 
@@ -142,7 +141,7 @@ func (p *Package) Install(log *slog.Logger, cfg config.Config, storePath string)
 // writeWrappers writes a wrapper into binPath for each binary in libexecPath
 // that sets YAZI_CONFIG_HOME to configPath.
 func writeWrappers(log *slog.Logger, binPath, libexecPath, configPath string) error {
-	if err := os.MkdirAll(binPath, store.DirPerm); err != nil {
+	if err := os.MkdirAll(binPath, dotman.DirPerm); err != nil {
 		return err
 	}
 
@@ -214,7 +213,7 @@ func writeToml(log *slog.Logger, path string, v any) error {
 }
 
 func writeFile(_ *slog.Logger, path string, b []byte) error {
-	return os.WriteFile(path, b, store.FilePerm)
+	return os.WriteFile(path, b, dotman.FilePerm)
 }
 
 // Based on tinted-theming/tinted-yazi's base16 template.
@@ -225,7 +224,7 @@ var yaziThemeTemplateSource string
 var yaziThemeTemplate = template.Must(template.New("theme.toml").Parse(yaziThemeTemplateSource))
 
 // colorsToYaziThemeToml renders a yazi theme.toml from base16 colors.
-func colorsToYaziThemeToml(colors theme.Base16Colors) (string, error) {
+func colorsToYaziThemeToml(colors dotman.Base16Colors) (string, error) {
 	var b strings.Builder
 	if err := yaziThemeTemplate.Execute(&b, colors); err != nil {
 		return "", err

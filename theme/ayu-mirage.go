@@ -1,9 +1,11 @@
 package theme
 
-var AyuMirage = Theme{
+import "dotman"
+
+var AyuMirage = dotman.Theme{
 	Name:    "ayu-mirage",
-	Variant: VariantDark,
-	Colors: Base16Colors{
+	Variant: dotman.VariantDark,
+	Colors: dotman.Base16Colors{
 		Base00: "#1f2430",
 		Base01: "#242936",
 		Base02: "#323844",

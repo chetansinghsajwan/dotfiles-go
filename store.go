@@ -1,4 +1,4 @@
-package store
+package dotman
 
 import (
 	"os"
@@ -18,9 +18,9 @@ type Store struct {
 	rootPath string
 }
 
-// DefaultRootPath returns $XDG_DATA_HOME/dotman/store, falling back to
+// DefaultStorePath returns $XDG_DATA_HOME/dotman/store, falling back to
 // ~/.local/share/dotman/store.
-func DefaultRootPath() (string, error) {
+func DefaultStorePath() (string, error) {
 	if dataHome := os.Getenv("XDG_DATA_HOME"); dataHome != "" {
 		return filepath.Join(dataHome, "dotman", "store"), nil
 	}
@@ -34,7 +34,7 @@ func DefaultRootPath() (string, error) {
 }
 
 func NewStore() (*Store, error) {
-	rootPath, err := DefaultRootPath()
+	rootPath, err := DefaultStorePath()
 	if err != nil {
 		return nil, err
 	}

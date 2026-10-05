@@ -1,9 +1,11 @@
 package theme
 
-var CatppuccinFrappe = Theme{
+import "dotman"
+
+var CatppuccinFrappe = dotman.Theme{
 	Name:    "catppuccin-frappe",
-	Variant: VariantDark,
-	Colors: Base16Colors{
+	Variant: dotman.VariantDark,
+	Colors: dotman.Base16Colors{
 		Base00: "#303446",
 		Base01: "#292c3c",
 		Base02: "#414559",

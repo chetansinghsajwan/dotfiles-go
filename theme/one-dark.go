@@ -1,9 +1,11 @@
 package theme
 
-var OneDark = Theme{
+import "dotman"
+
+var OneDark = dotman.Theme{
 	Name:    "one-dark",
-	Variant: VariantDark,
-	Colors: Base16Colors{
+	Variant: dotman.VariantDark,
+	Colors: dotman.Base16Colors{
 		Base00: "#282c34",
 		Base01: "#353b45",
 		Base02: "#3e4451",

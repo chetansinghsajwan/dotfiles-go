@@ -14,9 +14,8 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"dotman/config"
+	"dotman"
 	"dotman/lib"
-	"dotman/store"
 	"dotman/theme"
 )
 
@@ -42,11 +41,11 @@ func (p *Package) Name() string {
 // Install downloads lazygit's binary into storePath/bin and writes its
 // config (settings and theme) into storePath/config, then wraps the binary
 // to point LG_CONFIG_FILE at that config.
-func (p *Package) Install(log *slog.Logger, cfg config.Config, storePath string) error {
+func (p *Package) Install(log *slog.Logger, cfg dotman.Config, storePath string) error {
 	log.Info("Installing lazygit...", "version", p.Version)
 
 	binPath := filepath.Join(storePath, "bin")
-	if err := os.MkdirAll(binPath, store.DirPerm); err != nil {
+	if err := os.MkdirAll(binPath, dotman.DirPerm); err != nil {
 		log.Error("Failed to create bin directory.", "err", err)
 		return err
 	}
@@ -58,7 +57,7 @@ func (p *Package) Install(log *slog.Logger, cfg config.Config, storePath string)
 	}
 
 	configDir := filepath.Join(storePath, "config")
-	if err := os.MkdirAll(configDir, store.DirPerm); err != nil {
+	if err := os.MkdirAll(configDir, dotman.DirPerm); err != nil {
 		log.Error("Failed to create config directory.", "err", err)
 		return err
 	}
@@ -67,7 +66,7 @@ func (p *Package) Install(log *slog.Logger, cfg config.Config, storePath string)
 
 	if p.ConfigYaml != "" {
 		path := filepath.Join(configDir, "config.yml")
-		if err := os.WriteFile(path, []byte(p.ConfigYaml), store.FilePerm); err != nil {
+		if err := os.WriteFile(path, []byte(p.ConfigYaml), dotman.FilePerm); err != nil {
 			log.Error("Failed to write config.", "err", err)
 			return err
 		}
@@ -123,7 +122,7 @@ func writeSettingsYaml(path string, v any) error {
 		return err
 	}
 
-	return os.WriteFile(path, b, store.FilePerm)
+	return os.WriteFile(path, b, dotman.FilePerm)
 }
 
 // Based on tinted-theming's base16 lazygit template.
@@ -134,13 +133,13 @@ var lazygitThemeTemplateSource string
 var lazygitThemeTemplate = template.Must(template.New("theme.yml").Parse(lazygitThemeTemplateSource))
 
 // writeThemeYaml renders a lazygit theme.yml from base16 colors to path.
-func writeThemeYaml(colors theme.Base16Colors, path string) error {
+func writeThemeYaml(colors dotman.Base16Colors, path string) error {
 	var b strings.Builder
 	if err := lazygitThemeTemplate.Execute(&b, colors); err != nil {
 		return err
 	}
 
-	return os.WriteFile(path, []byte(b.String()), store.FilePerm)
+	return os.WriteFile(path, []byte(b.String()), dotman.FilePerm)
 }
 
 // DownloadLazygit maps GOARCH to the arch name lazygit's release assets use
@@ -175,7 +174,7 @@ func DownloadLazygitFor(version string, arch string, platform string, dest strin
 		return err
 	}
 
-	if err := os.MkdirAll(filepath.Dir(dest), store.DirPerm); err != nil {
+	if err := os.MkdirAll(filepath.Dir(dest), dotman.DirPerm); err != nil {
 		return err
 	}
 
@@ -210,7 +209,7 @@ func extractLazygitBinary(r io.Reader, dest string) error {
 			continue
 		}
 
-		f, err := os.OpenFile(dest, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, store.ExecPerm)
+		f, err := os.OpenFile(dest, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, dotman.ExecPerm)
 		if err != nil {
 			return err
 		}

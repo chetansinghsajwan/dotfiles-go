@@ -1,9 +1,11 @@
 package theme
 
-var GruvboxLightMedium = Theme{
+import "dotman"
+
+var GruvboxLightMedium = dotman.Theme{
 	Name:    "gruvbox-light-medium",
-	Variant: VariantLight,
-	Colors: Base16Colors{
+	Variant: dotman.VariantLight,
+	Colors: dotman.Base16Colors{
 		Base00: "#fbf1c7",
 		Base01: "#ebdbb2",
 		Base02: "#d5c4a1",

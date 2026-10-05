@@ -1,8 +1,12 @@
 package theme
 
-import "fmt"
+import (
+	"fmt"
 
-var Themes = []Theme{
+	"dotman"
+)
+
+var Themes = []dotman.Theme{
 	AyuDark,
 	AyuMirage,
 	AyuLight,
@@ -31,19 +35,19 @@ var Themes = []Theme{
 	TokyoNightLight,
 }
 
-var themesByName = func() map[string]Theme {
-	m := make(map[string]Theme, len(Themes))
+var themesByName = func() map[string]dotman.Theme {
+	m := make(map[string]dotman.Theme, len(Themes))
 	for _, t := range Themes {
 		m[t.Name] = t
 	}
 	return m
 }()
 
-func Get(name string) (Theme, error) {
+func Get(name string) (dotman.Theme, error) {
 	t, ok := themesByName[name]
 
 	if !ok {
-		return Theme{}, fmt.Errorf("theme not found: %s", name)
+		return dotman.Theme{}, fmt.Errorf("theme not found: %s", name)
 	}
 
 	return t, nil

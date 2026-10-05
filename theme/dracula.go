@@ -1,9 +1,11 @@
 package theme
 
-var Dracula = Theme{
+import "dotman"
+
+var Dracula = dotman.Theme{
 	Name:    "dracula",
-	Variant: VariantDark,
-	Colors: Base16Colors{
+	Variant: dotman.VariantDark,
+	Colors: dotman.Base16Colors{
 		Base00: "#282a36",
 		Base01: "#21222c",
 		Base02: "#44475a",

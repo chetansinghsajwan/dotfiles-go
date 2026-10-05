@@ -1,9 +1,11 @@
 package theme
 
-var Everforest = Theme{
+import "dotman"
+
+var Everforest = dotman.Theme{
 	Name:    "everforest",
-	Variant: VariantDark,
-	Colors: Base16Colors{
+	Variant: dotman.VariantDark,
+	Colors: dotman.Base16Colors{
 		Base00: "#2d353b",
 		Base01: "#343f44",
 		Base02: "#475258",

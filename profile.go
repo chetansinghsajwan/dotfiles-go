@@ -1,6 +1,7 @@
-// Package profile merges the packages' store paths into one profile, like
-// Nix's buildEnv, and switches the user onto it.
-package profile
+// Profiles merge the packages' store paths into one tree, like Nix's
+// buildEnv, and switch the user onto it.
+
+package dotman
 
 import (
 	"errors"
@@ -11,8 +12,6 @@ import (
 	"path/filepath"
 
 	"github.com/google/uuid"
-
-	"dotman/store"
 )
 
 // mergedDirs are the subdirectories of a package's store path that are merged
@@ -35,10 +34,10 @@ func DefaultLinkPath() (string, error) {
 	return filepath.Join(home, ".local", "state", "dotman", "profile"), nil
 }
 
-// Build creates a new profile in s that links every file under mergedDirs of
+// BuildProfile creates a new profile in s that links every file under mergedDirs of
 // each of storePaths, and returns its path. Directories are merged; two
 // packages providing the same file is an error.
-func Build(log *slog.Logger, s *store.Store, storePaths []string) (string, error) {
+func BuildProfile(log *slog.Logger, s *Store, storePaths []string) (string, error) {
 	profilePath, err := s.CreatePath("profile")
 	if err != nil {
 		return "", err
@@ -75,7 +74,7 @@ func merge(log *slog.Logger, profilePath string, storePaths []string) error {
 				dst := filepath.Join(profilePath, rel)
 
 				if d.IsDir() {
-					return os.MkdirAll(dst, store.DirPerm)
+					return os.MkdirAll(dst, DirPerm)
 				}
 
 				log.Debug("Linking into profile.", "src", src, "dst", dst)
@@ -99,10 +98,10 @@ func merge(log *slog.Logger, profilePath string, storePaths []string) error {
 	return nil
 }
 
-// Switch atomically points linkPath at profilePath, replacing the profile it
+// SwitchProfile atomically points linkPath at profilePath, replacing the profile it
 // pointed at before.
-func Switch(linkPath, profilePath string) error {
-	if err := os.MkdirAll(filepath.Dir(linkPath), store.DirPerm); err != nil {
+func SwitchProfile(linkPath, profilePath string) error {
+	if err := os.MkdirAll(filepath.Dir(linkPath), DirPerm); err != nil {
 		return err
 	}
 

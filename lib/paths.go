@@ -1,5 +1,5 @@
 // Package paths resolves paths relative to the source file that names them.
-package paths
+package lib
 
 import (
 	"path/filepath"

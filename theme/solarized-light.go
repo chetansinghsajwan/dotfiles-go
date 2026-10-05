@@ -1,9 +1,11 @@
 package theme
 
-var SolarizedLight = Theme{
+import "dotman"
+
+var SolarizedLight = dotman.Theme{
 	Name:    "solarized-light",
-	Variant: VariantLight,
-	Colors: Base16Colors{
+	Variant: dotman.VariantLight,
+	Colors: dotman.Base16Colors{
 		Base00: "#fdf6e3",
 		Base01: "#eee8d5",
 		Base02: "#93a1a1",

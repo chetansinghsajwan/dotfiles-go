@@ -2,6 +2,7 @@ package yazi
 
 import (
 	"archive/zip"
+	"dotman"
 	"fmt"
 	"log/slog"
 	"os"
@@ -9,7 +10,6 @@ import (
 	"runtime"
 
 	"dotman/lib"
-	"dotman/store"
 )
 
 // binaries are the executables installed from a yazi release.
@@ -77,7 +77,7 @@ func (p *Package) installBinaries(log *slog.Logger, dir string) error {
 		return fmt.Errorf("opening %s: %w", url, err)
 	}
 
-	if err := os.MkdirAll(dir, store.DirPerm); err != nil {
+	if err := os.MkdirAll(dir, dotman.DirPerm); err != nil {
 		return err
 	}
 

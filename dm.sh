@@ -82,7 +82,7 @@ exec_go() {
 }
 
 exec_dotman() {
-    exec_go run . "$@"
+    exec_go run ./cmd/dotman "$@"
 }
 
 ensure_go_installed

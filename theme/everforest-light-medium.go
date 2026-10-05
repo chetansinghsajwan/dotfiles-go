@@ -1,9 +1,11 @@
 package theme
 
-var EverforestLightMedium = Theme{
+import "dotman"
+
+var EverforestLightMedium = dotman.Theme{
 	Name:    "everforest-light-medium",
-	Variant: VariantLight,
-	Colors: Base16Colors{
+	Variant: dotman.VariantLight,
+	Colors: dotman.Base16Colors{
 		Base00: "#fdf6e3",
 		Base01: "#f4f0d9",
 		Base02: "#e6e2cc",
