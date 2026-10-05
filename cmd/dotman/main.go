@@ -8,6 +8,7 @@ import (
 	"dotman"
 	"dotman/configured/lazygit"
 	"dotman/configured/yazi"
+	"dotman/configured/zellij"
 	"dotman/logging"
 )
 
@@ -43,6 +44,7 @@ func main() {
 	var packages = []dotman.Package{
 		&yazi.Yazi,
 		&lazygit.Lazygit,
+		&zellij.Zellij,
 	}
 
 	var storePaths []string

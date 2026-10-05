@@ -1,0 +1,9 @@
+keybinds {
+    // Default tab mode binds k -> previous tab, j -> next tab; reverse them.
+    tab {
+        bind "k" { GoToNextTab; }
+        bind "j" { GoToPreviousTab; }
+        bind "Up" { GoToNextTab; }
+        bind "Down" { GoToPreviousTab; }
+    }
+}

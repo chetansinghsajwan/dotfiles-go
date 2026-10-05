@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 
@@ -114,4 +115,53 @@ func ExtractTarGzDir(archivePath, dir, dst string) error {
 	}
 
 	return nil
+}
+
+// ExtractTarGzFile writes the regular file called name, at any depth, of the
+// tar.gz at archivePath to dst as an executable, creating dst's directory.
+// It is for release archives that hold a binary, maybe next to a README or
+// LICENSE.
+func ExtractTarGzFile(archivePath, name, dst string) error {
+	f, err := os.Open(archivePath)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	gz, err := gzip.NewReader(f)
+	if err != nil {
+		return err
+	}
+	defer gz.Close()
+
+	tr := tar.NewReader(gz)
+	for {
+		hdr, err := tr.Next()
+		if err == io.EOF {
+			return fmt.Errorf("%s: %q not found in archive", archivePath, name)
+		}
+		if err != nil {
+			return err
+		}
+
+		if hdr.Typeflag != tar.TypeReg || path.Base(hdr.Name) != name {
+			continue
+		}
+
+		if err := os.MkdirAll(filepath.Dir(dst), dotman.DirPerm); err != nil {
+			return err
+		}
+
+		out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, dotman.ExecPerm)
+		if err != nil {
+			return err
+		}
+
+		if _, err := io.Copy(out, tr); err != nil {
+			out.Close()
+			return err
+		}
+
+		return out.Close()
+	}
 }

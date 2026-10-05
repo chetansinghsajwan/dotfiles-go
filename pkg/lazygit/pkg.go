@@ -1,12 +1,9 @@
 package lazygit
 
 import (
-	"archive/tar"
-	"compress/gzip"
 	_ "embed"
 	"errors"
 	"fmt"
-	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -190,57 +187,9 @@ func DownloadLazygitFor(store *dotman.Store, version string, arch string, platfo
 		return fmt.Errorf("lazygit %s: %w", version, err)
 	}
 
-	archive, err := os.Open(archivePath)
-	if err != nil {
-		return err
-	}
-	defer archive.Close()
-
-	if err := os.MkdirAll(filepath.Dir(dest), dotman.DirPerm); err != nil {
-		return err
-	}
-
-	if err := extractLazygitBinary(archive, dest); err != nil {
+	if err := lib.ExtractTarGzFile(archivePath, "lazygit", dest); err != nil {
 		return fmt.Errorf("extracting lazygit from %s: %w", archivePath, err)
 	}
 
 	return nil
-}
-
-// extractLazygitBinary reads the "lazygit" entry out of the tar.gz in r and
-// writes it to dest. The release archive holds the binary at its root
-// alongside README.md/LICENSE.
-func extractLazygitBinary(r io.Reader, dest string) error {
-	gz, err := gzip.NewReader(r)
-	if err != nil {
-		return err
-	}
-	defer gz.Close()
-
-	tr := tar.NewReader(gz)
-	for {
-		hdr, err := tr.Next()
-		if err == io.EOF {
-			return fmt.Errorf(`"lazygit" not found in archive`)
-		}
-		if err != nil {
-			return err
-		}
-
-		if hdr.Typeflag != tar.TypeReg || filepath.Base(hdr.Name) != "lazygit" {
-			continue
-		}
-
-		f, err := os.OpenFile(dest, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, dotman.ExecPerm)
-		if err != nil {
-			return err
-		}
-
-		if _, err := io.Copy(f, tr); err != nil {
-			f.Close()
-			return err
-		}
-
-		return f.Close()
-	}
 }
