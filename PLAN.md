@@ -7,14 +7,17 @@
 3. If a store path exists, it is complete: that input has been built.
 4. The same input always gives the same output and the same hash.
 
-## Where we are
+## Status
 
-| Piece | Today | Nix-like? |
+Implemented (all migration steps below). Where the implementation differs
+from the original plan, this document describes the implementation.
+
+| Piece | Before | Now |
 |---|---|---|
-| Downloads | `PathForUrl(url, hash)`, temp dir + rename, `FakeHash`, `HashMismatchError` | Mostly: fixed-output, but keyed by URL too, and unpinned downloads are allowed |
-| Package outputs | `CreatePath` → `uuid-name`, rebuilt every run | No |
-| Profile | `BuildProfile` merges `bin/`, `share/`; atomic `SwitchProfile` | Like `buildEnv`, but uuid-named, no generations |
-| Package code | `Install(log, cfg, store, storePath)` mixes evaluation and building | No |
+| Downloads | `PathForUrl(url, hash)`, unpinned allowed | Fixed-output derivations keyed by name + content hash; unpinned is an error |
+| Package outputs | `CreatePath` → `uuid-name`, rebuilt every run | Input-addressed, built once |
+| Profile | uuid-named, no generations | A derivation; generations, rollback, GC |
+| Package code | `Install(log, cfg, store, storePath)` | `Derive(ev)` returns data; builders build it |
 
 ## Core model: evaluation vs. realisation
 
@@ -23,27 +26,33 @@ A package doesn't build itself directly. It first **evaluates** to a
 derivation into a store path.
 
 ```go
-// Pure data. Its canonical JSON (with inputs replaced by their output paths)
-// is what the store hash is computed from.
+// core/derivation.go. Pure data. Its canonical JSON (with inputs replaced by
+// their output paths) is what the store hash is computed from.
 type Derivation struct {
-    Name    string
-    System  string                 // "linux/amd64"
-    Builder BuilderRef             // {Name: "yazi", Hash: <builder source hash>}
-    Attrs   json.RawMessage        // the package's settings, already serialized
-    Inputs  map[string]*Derivation // deps, fetches, local sources
+    Name     string
+    System   string                 // "linux/amd64", "" if it doesn't matter
+    Builder  *Builder               // {Name, Hash: <builder source hash>, Build}
+    Attrs    any                    // serialized to JSON; the builder sees only that
+    Inputs   map[string]*Derivation // deps, fetches, local sources
+    Fixed    *FixedOutput           // set for fetches: pins the output's hash
+    HostDeps []string               // not hashed; warned about if missing
 }
 
 type Package interface {
+    Name() string
     // Derive must not do IO beyond hashing local files.
     Derive(ev *Eval) (*Derivation, error)
 }
 
 type BuildFunc func(b *Build) error
 
-// b.Out            path to build into (a temp dir; see "Realisation")
+// b.Out            path to build into (temporary; see "Realisation")
 // b.Input("zip")   realised store path of a named input
 // b.Decode(&attrs) unmarshal Attrs into the builder's own struct
 ```
+
+`Realiser` (core/realise.go) computes paths (`Path`), builds (`Realise`) and
+verifies (`Check`).
 
 ### Rule: builders only see what was hashed
 
@@ -64,8 +73,11 @@ path = <store>/<base32(hash)[:32]>-<name>
 
 - Inputs are referenced by output path, so when a dependency's hash changes,
   every dependent's hash changes too.
-- `encoding/json` sorts map keys. Keep `Attrs` free of floats and other
-  non-canonical values.
+- Attrs are canonicalized (marshal, decode, marshal again), so object keys
+  are sorted and struct field order doesn't matter. Numbers keep their text.
+- `Build.Decode` turns numbers in `any` values back into `int64` (or
+  `float64` if fractional), so a `1920` in a settings map isn't written out
+  as `1920.0`.
 - **The store root is an input.** Outputs embed absolute paths, so the store
   dir is part of the hash, as in Nix.
 - **System** (`GOOS/GOARCH`) is an input.
@@ -77,9 +89,15 @@ anyway, or dotman silently keeps the old output. This is the main risk in the
 whole design.
 
 - Each builder package embeds its own source with
-  `//go:embed *.go *.toml *.kdl` and `BuilderRef.Hash` is a hash of that FS.
-- A global builder hash covers `lib/` sources, `go.sum` and
-  `runtime.Version()`, and is mixed into every derivation.
+  `//go:embed *.go *.toml` (plus its templates) and `NewBuilder` sets
+  `Builder.Hash` to the tree hash of that FS.
+- A toolchain hash (`ToolchainHash`) covers the sources of `core/` and
+  `lib/`, the Go version, and every third-party module's version and
+  checksum from `debug.ReadBuildInfo()`. That replaces embedding `go.sum`, so
+  no Go file needs to live at the repo root. It is mixed into every
+  derivation that isn't fixed-output.
+- `*.go` also matches `_test.go`, so editing a test in one of those packages
+  rebuilds its derivations. That is harmless and cheap.
 
 ### Global config is resolved during evaluation
 
@@ -93,29 +111,38 @@ Editing a theme's colors then changes the hash, not only renaming the theme.
 |---|---|---|
 | Fetch (fixed-output) | `name + content hash` only, not the URL | A mirror change doesn't refetch |
 | Tree fetch | `name + hash of the extracted tree` | For GitHub source archives, which aren't byte-stable (like Nix's `fetchzip`) |
-| Local source | file/dir content | `init.lua`, embedded plugins; copied into the store |
-| Package | drv JSON | yazi, zellij, lazygit, pv, op, fzf |
+| Local source | file/dir content | Embedded plugins (`dotman.LocalSource`); copied into the store |
+| Package | drv JSON | yazi, zellij, lazygit, pv, op |
 | Profile | the package output paths | Merges `bin/`, `share/` |
 
 - **Unpinned downloads are an error.** `FakeHash` stays as the way to discover
   the right hash.
-- Tree hash: deterministic walk over sorted paths, hashing path + mode +
-  content (or symlink target).
+- Fetch helpers live in `lib/fetch.go`: `FetchUrl`, `FetchGithubRelease`
+  (flat), and `FetchTarball`, `FetchGithubArchive` (tree).
+- Tree hash (`TreeHash`): deterministic walk over sorted paths, hashing each
+  entry's path, type, executable bit, and content or symlink target. Other
+  mode bits and times are left out, so a tree hashes the same before and
+  after normalization, and an `embed.FS` hashes the same as its copy.
+- Fixed-output builders may be impure (download, close over an `fs.FS`):
+  the output is checked against the pinned hash instead.
 
 ## Realisation
 
 ```
 path = <store>/<hash>-<name>
 if exists(path): done
-tmp  = mkdtemp(store, ".tmp-")
-build(tmp)
-scanSelfRefs(tmp)     # fail if any file or symlink contains tmp
-normalize(tmp)        # mtimes, modes, read-only
-rename(tmp, path)     # lost a race and path exists: delete tmp, done
+out  = <store>/.tmp-<random>-<name>   # not created; the builder creates it
+build(out)
+checkSelfRefs(out)    # fail if any file or symlink contains out
+normalize(out)        # mtimes, modes, read-only
+checkFixed(out)       # fixed-output only: compare against the pinned hash
+rename(out, path)     # lost a race and path exists: delete out, done
 ```
 
-Inputs are realised first, in dependency order. This is the same pattern
-`DownloadFile` already uses, applied to everything.
+Inputs are realised first, in dependency order. `out` sits in the store's
+root, so the rename never moves a (read-only) directory between parents, and
+an output can be a single file, as flat fetches are. Any failure removes
+`out`.
 
 ### Rule: no self-references
 
@@ -134,7 +161,7 @@ yazi         wrappers only         -> <h3>-yazi/bin/yazi
                with YAZI_CONFIG_HOME=<h2>-yazi-config
 ```
 
-`scanSelfRefs` enforces this: if any file's contents or any symlink target
+`checkSelfRefs` enforces this: if any file's contents or any symlink target
 contains the temp path, the build fails with
 `self-reference in bin/yazi; split the derivation`.
 
@@ -142,9 +169,15 @@ This keeps goal 3 exact (existence means complete) with no validity database.
 As a bonus, changing a keybind rebuilds only `yazi-config` and the wrapper, and
 the binary output stays as it is.
 
+The wrapper derivation is shared: `lib.Wrapper` writes `bin/` scripts whose
+`Exec`, `Env` values and `Args` name inputs as `@name@`, replaced with their
+store paths at build time. Shell aliases are relative symlinks (`z ->
+zellij`), so they don't refer to their own output either.
+
 ### Same input, same output
 
-- Set mtimes to epoch + 1.
+- Set mtimes to the Unix epoch + 1 second (symlinks keep theirs; Go can't
+  set them without following the link).
 - Normalize modes to `0444` / `0555` (dirs `0555`).
 - Make outputs read-only after build. This also catches apps that try to write
   into their config dir (e.g. `ya pkg` writing `package.toml`).
@@ -158,13 +191,14 @@ the binary output stays as it is.
   3x9k…-yazi/                    package output (read-only)
   7m2p…-yazi-bin/
   q8r1…-yazi-config/
-  a1b2…-yazi-x86_64-musl.zip/    fetch, path from content hash
-  c4d5…-places.lua/              local source, path from content
+  a1b2…-yazi-x86_64-unknown-linux-musl.zip   fetch (a file), path from content hash
+  b7c8…-plugins-7200d73/         tree fetch of a GitHub archive
+  c4d5…-places.yazi/             local source, path from content
   e6f7…-profile/
-  .tmp-*/                        in-progress builds; safe to delete
+  .tmp-*                         in-progress builds; safe to delete
 ~/.local/state/dotman/
   profile -> profiles/profile-12-link
-  profiles/profile-12-link -> ../../../share/dotman/store/e6f7…-profile
+  profiles/profile-12-link -> <store>/e6f7…-profile
 ```
 
 - Each generation link records one profile, so rollback comes for free.
@@ -175,41 +209,54 @@ the binary output stays as it is.
 - Mark everything reachable from the generation links. A path's references
   are found by scanning its files and symlinks for store hashes, as Nix does,
   so there's no references database.
-- Sweep unreachable store paths and any leftover `.tmp-*` dirs.
-- `dotman gc --keep N` deletes older generations first.
+- References are found by searching for `<store root>/` followed by a hash,
+  so outputs must refer to store paths by absolute path (wrappers and profile
+  symlinks do).
+- Sweep unreachable store paths and any leftover `.tmp-*` outputs. GC must
+  not run during a build, since it would delete that build's `.tmp-*`.
+- Fetches and local sources are only needed at build time, so GC deletes
+  them; a later rebuild downloads them again, like Nix.
+- The profile link is a root too, so a pre-generations profile isn't
+  collected before the first `switch`.
+- `dotman gc --keep N` first deletes all generations but the newest N and the
+  current one.
 
 ## Dependencies
 
 - **Packaged deps** are `Inputs`. Wrappers use their absolute store paths.
-- **Host deps** (e.g. `ffmpeg`, `7zz`) are declared as `HostDeps`, aren't
-  hashed, and dotman warns about them. Don't pretend they're pure.
+- **Host deps** (e.g. `ffprobe`, `7zz`) are declared as `HostDeps`, aren't
+  hashed, and dotman warns when one isn't on PATH at build time. Don't
+  pretend they're pure.
+- Script-only packages (pv, op) use `lib.ScriptPackage`.
 
 ## CLI
 
 | Command | Does |
 |---|---|
-| `dotman build [pkg…]` | Realise derivations without switching |
-| `dotman switch` | Build the profile, add a generation, point `profile` at it |
+| `dotman switch` | Build the profile, add a generation (unless it's unchanged), point `profile` at it. The default command |
+| `dotman build [pkg…]` | Realise packages (or the profile) without switching; print their paths |
+| `dotman build --check [pkg…]` | Also rebuild every non-fixed derivation in the closure and compare tree hashes |
 | `dotman rollback` | Point `profile` at the previous generation |
-| `dotman gc` | Delete unreachable store paths |
-| `dotman show-drv <pkg>` | Print the hashed JSON, to answer "why did this rebuild?" |
-| `dotman build --check` | Rebuild and compare, to verify determinism |
+| `dotman generations` | List generations, marking the current one |
+| `dotman gc [--keep N]` | Delete unreachable store paths |
+| `dotman show-drv [-r] <pkg>` | Print the hashed JSON, to answer "why did this rebuild?"; `-r` includes inputs |
 
 ## Migration
 
-1. **Core.** Add `Derivation`, `Eval`, `Build`, canonical hashing, builder
-   source hashing and the realise loop (temp dir, self-ref scan, normalize,
-   rename). Port `DownloadFile` to a fetch derivation keyed by content hash,
-   and add `FetchTree`.
-2. **First package.** Port `pv` end to end: local source input, builder hash,
-   `HostDeps`.
-3. **Profile.** Make the profile a derivation; add generations, `switch` and
-   `rollback`.
-4. **Real packages.** Port yazi (split into bin/config/wrapper; plugins as
-   tree-fetch and local-source inputs; theme resolved in `Derive`), then
-   zellij, lazygit, op and fzf.
+All done:
+
+1. **Core.** `Derivation`, `Eval`, `Build`, canonical hashing, builder
+   source hashing, the realise loop, fetch derivations (`FetchUrl`,
+   `FetchTarball`). Tests in `core/realise_test.go`.
+2. **First packages.** pv and op, via `lib.ScriptPackage`.
+3. **Profile.** A derivation; generations, `switch`, `rollback`.
+4. **Real packages.** yazi, zellij and lazygit, each split into
+   bin/config/wrapper; plugins as tree fetches and local sources; theme
+   resolved in `Derive`. Generated configs were checked byte-for-byte
+   against the old uuid-built ones.
 5. **Hardening.** Read-only outputs, normalization, `build --check`, `gc`.
-6. **Cleanup.** Remove `Install`, `CreatePath` and the uuid dependency.
+6. **Cleanup.** `Install`, `CreatePath`, `DownloadFile`, the uuid
+   dependency and `lib/platform.go` are gone.
 
 ## Open questions
 
@@ -220,4 +267,5 @@ the binary output stays as it is.
    under `$HOME`. Default: under `$HOME`, no sharing.
 3. **Mutable state:** if any tool refuses to run with a read-only config dir,
    it needs an escape hatch (e.g. a wrapper that copies config to a writable
-   location). Find out during step 4.
+   location). The tools start (`--version`), but day-to-day use hasn't been
+   checked yet.

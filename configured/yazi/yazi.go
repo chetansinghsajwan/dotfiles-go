@@ -1,8 +1,9 @@
 package yazi
 
 import (
-	"dotman/pkg/yazi"
 	"embed"
+
+	"dotman/pkg/yazi"
 )
 
 //go:embed init.lua
@@ -20,15 +21,15 @@ var Yazi = yazi.Package{
 		"aarch64-apple-darwin":       "sha256:3921182a21cceb0a505e5dac578e1487d48104caa5f114e9f8adf40b5a7289a9",
 	},
 
-	// TODO: pv and op aren't packaged yet; 7zz and ffmpeg (ffprobe) feed the
-	// properties panel.
-	Depends: []string{"7zz", "ffmpeg"},
+	// 7zz and ffprobe feed the properties panel. pv and op, which the
+	// previewers and opener run, come from the profile.
+	HostDeps: []string{"7zz", "ffprobe"},
 
 	Plugins: []yazi.Plugin{
-		yazi.NewPlugin("yazi-rs/plugins:full-border", "7200d73"),
-		yazi.NewPlugin("yazi-rs/plugins:toggle-pane", "7200d73"),
-		yazi.NewPlugin("yazi-rs/plugins:piper", "7200d73"),
-		yazi.NewPlugin("dedukun/bookmarks", "9ef1254"),
+		yazi.NewPlugin("yazi-rs/plugins:full-border", "7200d73", "sha256:7ab42f1707438821a1845c1a21cb6e3af3751f657f118c1f5c7baddc0b657df0"),
+		yazi.NewPlugin("yazi-rs/plugins:toggle-pane", "7200d73", "sha256:7ab42f1707438821a1845c1a21cb6e3af3751f657f118c1f5c7baddc0b657df0"),
+		yazi.NewPlugin("yazi-rs/plugins:piper", "7200d73", "sha256:7ab42f1707438821a1845c1a21cb6e3af3751f657f118c1f5c7baddc0b657df0"),
+		yazi.NewPlugin("dedukun/bookmarks", "9ef1254", "sha256:01a541ce58d095361e2a0ea507473e2b40766c483a077ac55a4c453ffc9e009f"),
 
 		yazi.NewLocalPlugin(plugins, "plugins/properties.lua"),
 		yazi.NewLocalPlugin(plugins, "plugins/places.lua"),

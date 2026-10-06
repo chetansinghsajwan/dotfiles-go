@@ -3,8 +3,6 @@ package yazi
 import (
 	"fmt"
 	"io/fs"
-	"log/slog"
-	"os"
 	"path"
 	"path/filepath"
 	"strings"
@@ -24,9 +22,13 @@ type Plugin struct {
 	// directory's or repo's name without its extension.
 	Path string
 
-	// Git revision to pin, e.g. a commit. Required for remote plugins, since
-	// their download is cached by it; unused for local ones.
+	// Git revision to pin, e.g. a commit. Unused for local plugins.
 	Version string
+
+	// Pins the tree hash of the repo's source at Version (see
+	// lib.FetchTarball). Plugins from the same repo and revision share it.
+	// Unused for local plugins.
+	Hash string
 
 	name    string
 	isLocal bool
@@ -40,8 +42,11 @@ type Plugin struct {
 	src fs.FS
 }
 
-func NewPlugin(pluginPath, version string) Plugin {
-	p := Plugin{Path: pluginPath, Version: version, isLocal: false}
+// NewPlugin returns a plugin downloaded from GitHub at version, a git
+// revision, whose source tree is pinned to hash. Pin dotman.FakeHash to find
+// the hash.
+func NewPlugin(pluginPath, version, hash string) Plugin {
+	p := Plugin{Path: pluginPath, Version: version, Hash: hash, isLocal: false}
 
 	if strings.HasPrefix(pluginPath, "./") || filepath.IsAbs(pluginPath) {
 		panic(fmt.Sprintf("yazi plugin %s: local plugins must use NewLocalPlugin", pluginPath))
@@ -97,43 +102,24 @@ func (p Plugin) IsLocal() bool {
 	return p.isLocal
 }
 
-// Install deploys the plugin into the yazi config directory configPath.
-// Remote plugins are downloaded into store first, reusing an earlier download.
-func (p Plugin) Install(log *slog.Logger, store *dotman.Store, configPath string) error {
+// pluginAttrs is how yazi-config finds a plugin: in the directory Dir, ""
+// for its root, of its input.
+type pluginAttrs struct {
+	Name  string
+	Input string
+	Dir   string
+}
+
+// derive returns the derivation holding the plugin's source, local or
+// downloaded, and where in it the plugin is.
+func (p Plugin) derive() (*dotman.Derivation, pluginAttrs, error) {
+	attrs := pluginAttrs{Name: p.name, Input: "plugin-" + p.name}
+
 	if p.IsLocal() {
-		log.Debug("Installing plugin...", "plugin", p.Path)
-		return p.installLocal(configPath)
+		drv, err := dotman.LocalSource(p.name+".yazi", p.src)
+		return drv, attrs, err
 	}
 
-	log.Debug("Installing plugin...", "plugin", p.Path, "version", p.Version)
-	return p.installRemote(store, configPath)
-}
-
-func (p Plugin) installLocal(installPath string) error {
-	dst := filepath.Join(installPath, "plugins", p.Name()+".yazi")
-
-	if err := os.CopyFS(dst, p.src); err != nil {
-		return fmt.Errorf("Copying yazi plugin %s: %w", p.Path, err)
-	}
-
-	return nil
-}
-
-// installRemote downloads the source archive of p.repo at p.Version and
-// deploys its p.dir into installPath/plugins.
-func (p Plugin) installRemote(store *dotman.Store, installPath string) error {
-	// TODO: pin the archive's hash. GitHub doesn't promise byte-stable source
-	// archives, so a pin may need refreshing, but it'd catch tampering.
-	url := lib.GetGithubArchiveUrl(p.repo, p.Version)
-	archivePath, err := lib.DownloadFile(store, url, "")
-	if err != nil {
-		return fmt.Errorf("downloading yazi plugin %s: %w", p.Path, err)
-	}
-
-	dst := filepath.Join(installPath, "plugins", p.Name()+".yazi")
-	if err := lib.ExtractTarGzDir(archivePath, p.dir, dst); err != nil {
-		return fmt.Errorf("extracting yazi plugin %s: %w", p.Path, err)
-	}
-
-	return nil
+	attrs.Dir = p.dir
+	return lib.FetchGithubArchive(p.repo, p.Version, p.Hash), attrs, nil
 }

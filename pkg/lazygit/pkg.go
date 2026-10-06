@@ -1,10 +1,7 @@
 package lazygit
 
 import (
-	_ "embed"
-	"errors"
-	"fmt"
-	"log/slog"
+	"embed"
 	"os"
 	"path/filepath"
 	"strings"
@@ -38,95 +35,142 @@ type Package struct {
 	Settings Settings
 }
 
+//go:embed *.go *.yml
+var src embed.FS
+
+var (
+	binBuilder    = dotman.NewBuilder("lazygit-bin", src, buildBin)
+	configBuilder = dotman.NewBuilder("lazygit-config", src, buildConfig)
+)
+
 func (p *Package) Name() string {
 	return "lazygit"
 }
 
-// Install downloads lazygit's binary into storePath/bin and writes its
-// config (settings and theme) into storePath/config, then wraps the binary
-// to point LG_CONFIG_FILE at that config.
-func (p *Package) Install(log *slog.Logger, cfg dotman.Config, store *dotman.Store, storePath string) error {
-	log.Info("Installing lazygit...", "version", p.Version)
+// Derive returns lazygit's wrapper, which runs the binary from lazygit-bin
+// with LG_CONFIG_FILE pointing at the files in lazygit-config.
+func (p *Package) Derive(ev *dotman.Eval) (*dotman.Derivation, error) {
+	bin := p.deriveBin(ev.System)
 
-	binPath := filepath.Join(storePath, "bin")
-	if err := os.MkdirAll(binPath, dotman.DirPerm); err != nil {
-		log.Error("Failed to create bin directory.", "err", err)
-		return err
+	t, err := theme.Resolve(p.Theme, ev.Config)
+	if err != nil {
+		return nil, err
 	}
 
-	lazygitUnwrappedPath := filepath.Join(binPath, "lazygit-unwrapped")
-	if err := DownloadLazygit(store, p.Version, p.Hashes, lazygitUnwrappedPath); err != nil {
-		log.Error("Failed to download lazygit.", "err", err)
-		return err
-	}
+	attrs := configAttrs{ConfigYaml: p.ConfigYaml, Settings: p.Settings, Theme: t}
+	files := attrs.files()
 
-	configDir := filepath.Join(storePath, "config")
-	if err := os.MkdirAll(configDir, dotman.DirPerm); err != nil {
-		log.Error("Failed to create config directory.", "err", err)
-		return err
-	}
+	wrap := lib.WrapSpec{Name: "lazygit", Exec: "@bin@/bin/lazygit"}
+	inputs := map[string]*dotman.Derivation{"bin": bin}
 
-	var configFiles []string
-
-	if p.ConfigYaml != "" {
-		path := filepath.Join(configDir, "config.yml")
-		if err := os.WriteFile(path, []byte(p.ConfigYaml), dotman.FilePerm); err != nil {
-			log.Error("Failed to write config.", "err", err)
-			return err
-		}
-		configFiles = append(configFiles, path)
-	} else if len(p.Settings) > 0 {
-		path := filepath.Join(configDir, "config.yml")
-		if err := writeSettingsYaml(path, p.Settings); err != nil {
-			log.Error("Failed to write config.", "err", err)
-			return err
-		}
-		configFiles = append(configFiles, path)
-	}
-
-	themeName := p.Theme
-	if themeName == "" {
-		themeName = cfg.Theme
-	}
-
-	if themeName != "" {
-		log.Debug("Rendering theme.", "theme", themeName)
-
-		t, err := theme.Get(themeName)
-		if err != nil {
-			log.Error("Failed to get theme.", "err", err)
-			return err
+	if len(files) > 0 {
+		inputs["config"] = &dotman.Derivation{
+			Name:    "lazygit-config",
+			Builder: configBuilder,
+			Attrs:   attrs,
 		}
 
-		path := filepath.Join(configDir, "theme.yml")
-		if err := writeThemeYaml(t.Colors, path); err != nil {
-			log.Error("Failed to write theme.", "err", err)
-			return err
+		var paths []string
+		for _, f := range files {
+			paths = append(paths, "@config@/"+f)
 		}
-		configFiles = append(configFiles, path)
+		wrap.Env = map[string]string{"LG_CONFIG_FILE": strings.Join(paths, ",")}
 	}
 
-	wrap := lib.Wrap{
-		Path: filepath.Join(binPath, "lazygit"),
-		Exec: lazygitUnwrappedPath,
-	}
-	if len(configFiles) > 0 {
-		wrap.Env = map[string]string{
-			"LG_CONFIG_FILE": strings.Join(configFiles, ","),
-		}
-	}
-
-	log.Debug("Writing wrapper.", "path", wrap.Path, "exec", wrap.Exec)
-	return lib.CreateWrap(wrap)
+	return lib.Wrapper(lib.WrapperSpec{
+		Name:   "lazygit",
+		Inputs: inputs,
+		Wraps:  []lib.WrapSpec{wrap},
+	}), nil
 }
 
-func writeSettingsYaml(path string, v any) error {
-	b, err := yaml.Marshal(v)
-	if err != nil {
+// deriveBin returns the derivation that extracts lazygit's binary from the
+// release for system.
+func (p *Package) deriveBin(system string) *dotman.Derivation {
+	platform, arch, _ := strings.Cut(system, "/")
+	if arch == "amd64" {
+		arch = "x86_64"
+	}
+	target := platform + "_" + arch
+
+	// Without a pin, FakeHash makes the fetch fail with the hash to pin.
+	hash, pinned := p.Hashes[target]
+	if !pinned {
+		hash = dotman.FakeHash
+	}
+
+	archive := lib.FetchGithubRelease(lib.GithubRelease{
+		Repo:  "jesseduffield/lazygit",
+		Tag:   "v" + p.Version,
+		Asset: "lazygit_" + p.Version + "_" + target + ".tar.gz",
+		Hash:  hash,
+	})
+
+	return &dotman.Derivation{
+		Name:    "lazygit-bin",
+		System:  system,
+		Builder: binBuilder,
+		Inputs:  map[string]*dotman.Derivation{"archive": archive},
+	}
+}
+
+func buildBin(b *dotman.Build) error {
+	return lib.ExtractTarGzFile(b.Input("archive"), "lazygit", filepath.Join(b.Out, "bin", "lazygit"))
+}
+
+type configAttrs struct {
+	ConfigYaml string
+	Settings   Settings
+	Theme      *dotman.Theme
+}
+
+// files returns the names of the files buildConfig writes, in the order
+// lazygit should merge them.
+func (a configAttrs) files() []string {
+	var files []string
+	if a.ConfigYaml != "" || len(a.Settings) > 0 {
+		files = append(files, "config.yml")
+	}
+	if a.Theme != nil {
+		files = append(files, "theme.yml")
+	}
+
+	return files
+}
+
+func buildConfig(b *dotman.Build) error {
+	var attrs configAttrs
+	if err := b.Decode(&attrs); err != nil {
 		return err
 	}
 
-	return os.WriteFile(path, b, dotman.FilePerm)
+	if err := os.MkdirAll(b.Out, dotman.DirPerm); err != nil {
+		return err
+	}
+
+	if attrs.ConfigYaml != "" {
+		if err := os.WriteFile(filepath.Join(b.Out, "config.yml"), []byte(attrs.ConfigYaml), dotman.FilePerm); err != nil {
+			return err
+		}
+	} else if len(attrs.Settings) > 0 {
+		y, err := yaml.Marshal(attrs.Settings)
+		if err != nil {
+			return err
+		}
+
+		if err := os.WriteFile(filepath.Join(b.Out, "config.yml"), y, dotman.FilePerm); err != nil {
+			return err
+		}
+	}
+
+	if attrs.Theme != nil {
+		b.Log.Debug("Rendering theme.", "theme", attrs.Theme.Name)
+		if err := writeThemeYaml(attrs.Theme.Colors, filepath.Join(b.Out, "theme.yml")); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // Based on tinted-theming's base16 lazygit template.
@@ -144,52 +188,4 @@ func writeThemeYaml(colors dotman.Base16Colors, path string) error {
 	}
 
 	return os.WriteFile(path, []byte(b.String()), dotman.FilePerm)
-}
-
-// DownloadLazygit maps GOARCH to the arch name lazygit's release assets use
-// (e.g. "amd64" -> "x86_64") and picks this machine's hash out of hashes
-// before downloading.
-func DownloadLazygit(store *dotman.Store, version string, hashes map[string]string, dest string) error {
-	arch := lib.GetArch()
-	if arch == "amd64" {
-		arch = "x86_64"
-	}
-	platform := lib.GetPlatform()
-	target := platform + "_" + arch
-
-	// Without a pin, FakeHash makes the download fail with the hash to pin.
-	hash, pinned := hashes[target]
-	if !pinned {
-		hash = lib.FakeHash
-	}
-
-	err := DownloadLazygitFor(store, version, arch, platform, hash, dest)
-	if mismatch, ok := errors.AsType[*lib.HashMismatchError](err); ok && !pinned {
-		return fmt.Errorf("lazygit %s: no hash pinned for %s; got %s", version, target, mismatch.Got)
-	}
-
-	return err
-}
-
-// DownloadLazygitFor downloads the lazygit release asset for arch/platform
-// into the store, reusing an earlier download and checking it against hash,
-// and extracts the lazygit binary out of its tar.gz into dest.
-func DownloadLazygitFor(store *dotman.Store, version string, arch string, platform string, hash string, dest string) error {
-	asset := "lazygit_" + version + "_" + platform + "_" + arch + ".tar.gz"
-
-	archivePath, err := lib.DownloadGithubRelease(store, lib.GithubRelease{
-		Repo:  "jesseduffield/lazygit",
-		Tag:   "v" + version,
-		Asset: asset,
-		Hash:  hash,
-	})
-	if err != nil {
-		return fmt.Errorf("lazygit %s: %w", version, err)
-	}
-
-	if err := lib.ExtractTarGzFile(archivePath, "lazygit", dest); err != nil {
-		return fmt.Errorf("extracting lazygit from %s: %w", archivePath, err)
-	}
-
-	return nil
 }

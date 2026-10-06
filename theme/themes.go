@@ -52,3 +52,23 @@ func Get(name string) (dotman.Theme, error) {
 
 	return t, nil
 }
+
+// Resolve returns the theme a package uses: override if it is set, or else
+// cfg's theme, or nil if neither is. Packages resolve it while deriving, so
+// the theme's colors, not just its name, are part of their derivation.
+func Resolve(override string, cfg dotman.Config) (*dotman.Theme, error) {
+	name := override
+	if name == "" {
+		name = cfg.Theme
+	}
+	if name == "" {
+		return nil, nil
+	}
+
+	t, err := Get(name)
+	if err != nil {
+		return nil, err
+	}
+
+	return &t, nil
+}

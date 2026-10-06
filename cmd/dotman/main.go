@@ -1,8 +1,12 @@
 package main
 
 import (
+	"errors"
+	"flag"
+	"fmt"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"strconv"
 
 	"dotman/configured/lazygit"
@@ -11,8 +15,34 @@ import (
 	"dotman/configured/yazi"
 	"dotman/configured/zellij"
 	"dotman/core"
+	"dotman/lib"
 	"dotman/logging"
 )
+
+var packages = []dotman.Package{
+	&yazi.Yazi,
+	&lazygit.Lazygit,
+	&zellij.Zellij,
+	&pv.PvPkg,
+	&op.OpPkg,
+}
+
+const usage = `usage: dotman <command> [args]
+
+commands:
+  switch               build the profile and make it the current generation
+                       (the default)
+  build [--check] [pkg...]
+                       build packages, or the profile and so every package,
+                       and print their store paths; --check also rebuilds
+                       them and fails if any rebuild differs
+  rollback             make the previous generation current
+  generations          list generations
+  gc [--keep N]        delete all but the newest N generations, if given,
+                       then every store path no generation uses
+  show-drv [-r] <pkg>  print the derivation a package's store path is a hash
+                       of; -r also prints its inputs'
+`
 
 // devMode reports whether DOTMAN_DEV is set to a true value, like 1 or true.
 func devMode() bool {
@@ -32,69 +62,296 @@ func main() {
 
 	slog.SetDefault(slog.New(logging.NewHandler(os.Stderr, level, storeRoot)))
 
-	cfg := dotman.DefaultConfig
-
-	slog.Info("Initializing store...", "path", storeRoot)
-
 	if storeErr != nil {
-		slog.Error("Failed to initialize store.", "err", storeErr)
+		slog.Error("Failed to find store.", "err", storeErr)
 		os.Exit(1)
 	}
 
-	s := dotman.NewStoreWithPath(storeRoot)
+	if err := run(storeRoot, os.Args[1:]); err != nil {
+		slog.Error(err.Error())
+		os.Exit(1)
+	}
+}
 
-	var packages = []dotman.Package{
-		&yazi.Yazi,
-		&lazygit.Lazygit,
-		&zellij.Zellij,
-		&pv.PvPkg,
-		&op.OpPkg,
+type app struct {
+	log  *slog.Logger
+	ev   *dotman.Eval
+	r    *dotman.Realiser
+	gens *dotman.Generations
+}
+
+func run(storeRoot string, args []string) error {
+	cmd := "switch"
+	if len(args) > 0 {
+		cmd, args = args[0], args[1:]
 	}
 
-	var storePaths []string
+	if cmd == "help" || cmd == "-h" || cmd == "--help" {
+		fmt.Print(usage)
+		return nil
+	}
+
+	toolchain, err := dotman.ToolchainHash(dotman.Sources, lib.Sources)
+	if err != nil {
+		return fmt.Errorf("hashing toolchain: %w", err)
+	}
+
+	stateDir, err := dotman.DefaultStateDir()
+	if err != nil {
+		return err
+	}
+
+	a := &app{
+		log:  slog.Default(),
+		ev:   dotman.NewEval(dotman.DefaultConfig),
+		r:    dotman.NewRealiser(slog.Default(), dotman.NewStoreWithPath(storeRoot), toolchain),
+		gens: dotman.NewGenerations(stateDir),
+	}
+
+	switch cmd {
+	case "switch":
+		return a.switchCmd(args)
+	case "build":
+		return a.buildCmd(args)
+	case "rollback":
+		return a.rollbackCmd(args)
+	case "generations":
+		return a.generationsCmd(args)
+	case "gc":
+		return a.gcCmd(args)
+	case "show-drv":
+		return a.showDrvCmd(args)
+	}
+
+	fmt.Fprint(os.Stderr, usage)
+	return fmt.Errorf("unknown command %q", cmd)
+}
+
+func noArgs(fs *flag.FlagSet, args []string) error {
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("%s takes no arguments", fs.Name())
+	}
+	return nil
+}
+
+// derive returns each package's derivation, by package name.
+func (a *app) derive() (map[string]*dotman.Derivation, error) {
+	drvs := map[string]*dotman.Derivation{}
 	for _, p := range packages {
-		slog.Info("Building package...", "pkg", p.Name())
-
-		log := slog.Default().With(logging.PrefixKey, p.Name())
-
-		storePath, err := s.CreatePath(p.Name())
-		if err != nil {
-			log.Error("Failed to create store path.", "err", err)
-			os.Exit(1)
+		if _, dup := drvs[p.Name()]; dup {
+			return nil, fmt.Errorf("two packages named %s", p.Name())
 		}
 
-		err = p.Install(log, cfg, s, storePath)
+		drv, err := p.Derive(a.ev)
 		if err != nil {
-			log.Error("Failed to build package.", "err", err)
+			return nil, fmt.Errorf("%s: %w", p.Name(), err)
+		}
+		drvs[p.Name()] = drv
+	}
 
-			if err := os.RemoveAll(storePath); err != nil {
-				log.Error("Failed to remove store path.", "path", storePath, "err", err)
+	return drvs, nil
+}
+
+// selectDrvs returns the derivations of the packages called names, or the
+// profile's, which has every package as an input, if there are none.
+// "profile" names the profile.
+func (a *app) selectDrvs(names []string) ([]*dotman.Derivation, error) {
+	drvs, err := a.derive()
+	if err != nil {
+		return nil, err
+	}
+	profile := dotman.Profile(drvs)
+
+	if len(names) == 0 {
+		return []*dotman.Derivation{profile}, nil
+	}
+
+	var selected []*dotman.Derivation
+	for _, name := range names {
+		if name == "profile" {
+			selected = append(selected, profile)
+			continue
+		}
+
+		drv, ok := drvs[name]
+		if !ok {
+			return nil, fmt.Errorf("no package named %s", name)
+		}
+		selected = append(selected, drv)
+	}
+
+	return selected, nil
+}
+
+func (a *app) switchCmd(args []string) error {
+	if err := noArgs(flag.NewFlagSet("switch", flag.ContinueOnError), args); err != nil {
+		return err
+	}
+
+	drvs, err := a.derive()
+	if err != nil {
+		return err
+	}
+
+	profilePath, err := a.r.Realise(dotman.Profile(drvs))
+	if err != nil {
+		return err
+	}
+
+	n, err := a.gens.Switch(profilePath)
+	if err != nil {
+		return fmt.Errorf("switching profile: %w", err)
+	}
+
+	a.log.Info("Switched profile.", "generation", n, "profile", profilePath)
+	return nil
+}
+
+func (a *app) buildCmd(args []string) error {
+	fs := flag.NewFlagSet("build", flag.ContinueOnError)
+	check := fs.Bool("check", false, "rebuild and fail if any rebuild differs")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	drvs, err := a.selectDrvs(fs.Args())
+	if err != nil {
+		return err
+	}
+
+	for _, drv := range drvs {
+		if *check {
+			if err := a.r.Check(drv); err != nil {
+				return err
 			}
-
-			os.Exit(1)
 		}
 
-		storePaths = append(storePaths, storePath)
+		path, err := a.r.Realise(drv)
+		if err != nil {
+			return err
+		}
+		fmt.Println(path)
 	}
 
-	slog.Info("Building profile...")
+	return nil
+}
 
-	profilePath, err := dotman.BuildProfile(slog.Default(), s, storePaths)
+func (a *app) rollbackCmd(args []string) error {
+	if err := noArgs(flag.NewFlagSet("rollback", flag.ContinueOnError), args); err != nil {
+		return err
+	}
+
+	n, err := a.gens.Rollback()
 	if err != nil {
-		slog.Error("Failed to build profile.", "err", err)
-		os.Exit(1)
+		return err
 	}
 
-	linkPath, err := dotman.DefaultLinkPath()
+	a.log.Info("Rolled back.", "generation", n)
+	return nil
+}
+
+func (a *app) generationsCmd(args []string) error {
+	if err := noArgs(flag.NewFlagSet("generations", flag.ContinueOnError), args); err != nil {
+		return err
+	}
+
+	gens, err := a.gens.List()
 	if err != nil {
-		slog.Error("Failed to find profile link path.", "err", err)
-		os.Exit(1)
+		return err
 	}
 
-	if err := dotman.SwitchProfile(linkPath, profilePath); err != nil {
-		slog.Error("Failed to switch profile.", "err", err)
-		os.Exit(1)
+	current, err := a.gens.Current()
+	if err != nil {
+		return err
 	}
 
-	slog.Info("Switched profile.", "profile", profilePath)
+	for _, g := range gens {
+		marker := " "
+		if g.Number == current {
+			marker = "*"
+		}
+		fmt.Printf("%s %4d  %s\n", marker, g.Number, g.Target)
+	}
+
+	return nil
+}
+
+func (a *app) gcCmd(args []string) error {
+	fs := flag.NewFlagSet("gc", flag.ContinueOnError)
+	keep := fs.Int("keep", 0, "delete all but the newest `N` generations first")
+	if err := noArgs(fs, args); err != nil {
+		return err
+	}
+
+	if *keep > 0 {
+		deleted, err := a.gens.Delete(*keep)
+		if err != nil {
+			return err
+		}
+		if len(deleted) > 0 {
+			a.log.Info("Deleted generations.", "generations", deleted)
+		}
+	}
+
+	gens, err := a.gens.List()
+	if err != nil {
+		return err
+	}
+
+	var roots []string
+	for _, g := range gens {
+		roots = append(roots, g.Target)
+	}
+
+	// Before the first switch, the profile link may point straight at a
+	// profile rather than at a generation.
+	if target, err := filepath.EvalSymlinks(a.gens.ProfileLink()); err == nil {
+		roots = append(roots, target)
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+
+	deleted, err := a.r.Store.GC(a.log, roots)
+	a.log.Info("Deleted store paths.", "count", len(deleted))
+	return err
+}
+
+func (a *app) showDrvCmd(args []string) error {
+	fs := flag.NewFlagSet("show-drv", flag.ContinueOnError)
+	recursive := fs.Bool("r", false, "also print the derivations of its inputs")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() != 1 {
+		return errors.New("show-drv takes one package name")
+	}
+
+	drvs, err := a.selectDrvs(fs.Args())
+	if err != nil {
+		return err
+	}
+
+	shown := drvs
+	if *recursive {
+		shown = dotman.Closure(drvs[0])
+	}
+
+	for _, drv := range shown {
+		path, err := a.r.Path(drv)
+		if err != nil {
+			return err
+		}
+
+		record, err := a.r.Record(drv)
+		if err != nil {
+			return err
+		}
+
+		fmt.Printf("%s\n%s\n\n", path, record)
+	}
+
+	return nil
 }

@@ -1,12 +1,8 @@
 package dotman
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"os"
 	"path/filepath"
-
-	"github.com/google/uuid"
 )
 
 // Permissions for directories and files that packages create in the store.
@@ -14,7 +10,16 @@ const (
 	DirPerm  os.FileMode = 0o755
 	FilePerm os.FileMode = 0o644
 	ExecPerm os.FileMode = 0o755
+
+	// What normalize leaves store paths with, so nothing edits them in
+	// place.
+	ReadOnlyPerm     os.FileMode = 0o444
+	ReadOnlyExecPerm os.FileMode = 0o555
 )
+
+// tempPrefix starts the names of outputs being built in the store's root.
+// They are safe to delete when no build is running.
+const tempPrefix = ".tmp-"
 
 type Store struct {
 	rootPath string
@@ -52,57 +57,4 @@ func NewStoreWithPath(rootPath string) *Store {
 
 func (m *Store) RootPath() string {
 	return m.rootPath
-}
-
-// CreatePath creates a new, empty directory in the store for the package
-// called name and returns its path.
-func (m *Store) CreatePath(name string) (string, error) {
-	path := filepath.Join(m.rootPath, uuid.New().String()+"-"+name)
-	if err := os.MkdirAll(path, DirPerm); err != nil {
-		return "", err
-	}
-
-	return path, nil
-}
-
-// HashForUrl returns the hex SHA-256 of url and the hash its download is
-// pinned to, for naming its store path. The same pair always gets the same
-// hash, so a download can be found again, and changing the pin, or adding
-// one to an unpinned download, fetches it afresh rather than reusing a file
-// that was never checked against it.
-func (m *Store) HashForUrl(url, hash string) string {
-	sum := sha256.Sum256([]byte(url + "\x00" + hash))
-	return hex.EncodeToString(sum[:])
-}
-
-// PathForUrl returns the store path that url's download, pinned to hash,
-// lives at. It is the same for every run, so it doubles as a cache key; it
-// may not exist yet.
-func (m *Store) PathForUrl(url, hash string) string {
-	return filepath.Join(m.rootPath, m.HashForUrl(url, hash)+"-"+filepath.Base(url))
-}
-
-// CreateTempPath creates a new, empty directory in the store to build into
-// before renaming it to its final path, so that path is never seen half
-// written.
-func (m *Store) CreateTempPath() (string, error) {
-	if err := os.MkdirAll(m.rootPath, DirPerm); err != nil {
-		return "", err
-	}
-
-	path, err := os.MkdirTemp(m.rootPath, ".tmp-")
-	if err != nil {
-		return "", err
-	}
-
-	if err := os.Chmod(path, DirPerm); err != nil {
-		os.RemoveAll(path)
-		return "", err
-	}
-
-	return path, nil
-}
-
-func (m *Store) RemovePath(path string) error {
-	return os.RemoveAll(path)
 }

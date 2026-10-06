@@ -51,16 +51,17 @@ func CreateWrap(wrap Wrap) error {
 	return os.WriteFile(wrap.Path, []byte(b.String()), dotman.ExecPerm)
 }
 
-// CreateShellAliases writes a wrapper into binPath for each of aliases that
-// runs exec, so each alias is a command on PATH, in every shell and to every
-// program, once the profile links binPath in.
-func CreateShellAliases(binPath, exec string, aliases []string) error {
+// CreateShellAliases links each of aliases to target in binPath, so each
+// alias is a command on PATH, in every shell and to every program, once the
+// profile links binPath in. The links are relative, so they work wherever
+// binPath ends up.
+func CreateShellAliases(binPath, target string, aliases []string) error {
 	for _, alias := range aliases {
 		if alias == "" || strings.ContainsRune(alias, '/') {
-			return fmt.Errorf("invalid shell alias %q for %s", alias, exec)
+			return fmt.Errorf("invalid shell alias %q for %s", alias, target)
 		}
 
-		if err := CreateWrap(Wrap{Path: filepath.Join(binPath, alias), Exec: exec}); err != nil {
+		if err := os.Symlink(target, filepath.Join(binPath, alias)); err != nil {
 			return err
 		}
 	}

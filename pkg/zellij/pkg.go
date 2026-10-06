@@ -1,13 +1,10 @@
 package zellij
 
 import (
-	_ "embed"
-	"errors"
+	"embed"
 	"fmt"
-	"log/slog"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strconv"
 	"strings"
 	"text/template"
@@ -39,49 +36,121 @@ type Zellij struct {
 	ShellAliases []string
 }
 
+//go:embed *.go *.kdl
+var src embed.FS
+
+var (
+	binBuilder    = dotman.NewBuilder("zellij-bin", src, buildBin)
+	configBuilder = dotman.NewBuilder("zellij-config", src, buildConfig)
+)
+
 func (z *Zellij) Name() string {
 	return "zellij"
 }
 
-// Install downloads zellij's binary into storePath/libexec, writes its
-// config (settings and theme) into storePath/config, and writes a wrapper
-// and the shell aliases into storePath/bin that point zellij at that config.
-func (z *Zellij) Install(log *slog.Logger, cfg dotman.Config, store *dotman.Store, storePath string) error {
-	log.Info("Downloading zellij...", "version", z.Version)
-	unwrappedPath := filepath.Join(storePath, "libexec", "zellij")
-	err := z.DownloadZellij(store, z.Version, runtime.GOOS, runtime.GOARCH, unwrappedPath)
-
+// Derive returns zellij's wrapper, which runs the binary from zellij-bin
+// with ZELLIJ_CONFIG_DIR pointing at zellij-config, and the shell aliases.
+func (z *Zellij) Derive(ev *dotman.Eval) (*dotman.Derivation, error) {
+	bin, err := z.deriveBin(ev.System)
 	if err != nil {
-		log.Error("Failed to download zellij", "version", z.Version, "error", err)
+		return nil, err
+	}
+
+	t, err := theme.Resolve(z.Theme, ev.Config)
+	if err != nil {
+		return nil, err
+	}
+
+	config := &dotman.Derivation{
+		Name:    "zellij-config",
+		Builder: configBuilder,
+		Attrs:   configAttrs{ConfigKdl: z.ConfigKdl, Theme: t},
+	}
+
+	aliases := map[string]string{}
+	for _, alias := range z.ShellAliases {
+		aliases[alias] = "zellij"
+	}
+
+	return lib.Wrapper(lib.WrapperSpec{
+		Name:   "zellij",
+		Inputs: map[string]*dotman.Derivation{"bin": bin, "config": config},
+		Wraps: []lib.WrapSpec{{
+			Name: "zellij",
+			Exec: "@bin@/bin/zellij",
+			Env:  map[string]string{"ZELLIJ_CONFIG_DIR": "@config@"},
+		}},
+		Aliases: aliases,
+	}), nil
+}
+
+// deriveBin returns the derivation that extracts zellij's binary from the
+// release for system.
+func (z *Zellij) deriveBin(system string) (*dotman.Derivation, error) {
+	var target string
+	switch system {
+	case "darwin/amd64":
+		target = "x86_64-apple-darwin"
+	case "darwin/arm64":
+		target = "aarch64-apple-darwin"
+	case "linux/amd64":
+		target = "x86_64-unknown-linux-musl"
+	case "linux/arm64":
+		target = "aarch64-unknown-linux-musl"
+	default:
+		return nil, fmt.Errorf("no zellij release for %s", system)
+	}
+
+	// Without a pin, FakeHash makes the fetch fail with the hash to pin.
+	hash, pinned := z.Hashes[target]
+	if !pinned {
+		hash = dotman.FakeHash
+	}
+
+	archive := lib.FetchGithubRelease(lib.GithubRelease{
+		Repo:  "zellij-org/zellij",
+		Tag:   "v" + z.Version,
+		Asset: "zellij-" + target + ".tar.gz",
+		Hash:  hash,
+	})
+
+	return &dotman.Derivation{
+		Name:    "zellij-bin",
+		System:  system,
+		Builder: binBuilder,
+		Inputs:  map[string]*dotman.Derivation{"archive": archive},
+	}, nil
+}
+
+// The release archive holds just the zellij binary.
+func buildBin(b *dotman.Build) error {
+	return lib.ExtractTarGzFile(b.Input("archive"), "zellij", filepath.Join(b.Out, "bin", "zellij"))
+}
+
+type configAttrs struct {
+	ConfigKdl string
+	Theme     *dotman.Theme
+}
+
+// buildConfig writes config.kdl and the theme it names.
+func buildConfig(b *dotman.Build) error {
+	var attrs configAttrs
+	if err := b.Decode(&attrs); err != nil {
 		return err
 	}
 
-	configDir := filepath.Join(storePath, "config")
-	if err := os.MkdirAll(configDir, dotman.DirPerm); err != nil {
-		log.Error("Failed to create config directory.", "err", err)
+	if err := os.MkdirAll(b.Out, dotman.DirPerm); err != nil {
 		return err
 	}
 
-	configKdl := z.ConfigKdl
+	configKdl := attrs.ConfigKdl
 
-	themeName := z.Theme
-	if themeName == "" {
-		themeName = cfg.Theme
-	}
-
-	if themeName != "" {
-		log.Debug("Rendering theme.", "theme", themeName)
-
-		t, err := theme.Get(themeName)
-		if err != nil {
-			log.Error("Failed to get theme.", "err", err)
-			return err
-		}
+	if t := attrs.Theme; t != nil {
+		b.Log.Debug("Rendering theme.", "theme", t.Name)
 
 		// zellij loads every theme in config/themes and uses the one
 		// config.kdl names.
-		if err := writeThemeKdl(t, filepath.Join(configDir, "themes", t.Name+".kdl")); err != nil {
-			log.Error("Failed to write theme.", "err", err)
+		if err := writeThemeKdl(*t, filepath.Join(b.Out, "themes", t.Name+".kdl")); err != nil {
 			return err
 		}
 
@@ -91,36 +160,7 @@ func (z *Zellij) Install(log *slog.Logger, cfg dotman.Config, store *dotman.Stor
 		configKdl += "theme " + strconv.Quote(t.Name) + "\n"
 	}
 
-	if err := os.WriteFile(filepath.Join(configDir, "config.kdl"), []byte(configKdl), dotman.FilePerm); err != nil {
-		log.Error("Failed to write config.", "err", err)
-		return err
-	}
-
-	binPath := filepath.Join(storePath, "bin")
-	if err := os.MkdirAll(binPath, dotman.DirPerm); err != nil {
-		log.Error("Failed to create bin directory.", "err", err)
-		return err
-	}
-
-	zellijPath := filepath.Join(binPath, "zellij")
-	wrap := lib.Wrap{
-		Path: zellijPath,
-		Exec: unwrappedPath,
-		Env:  map[string]string{"ZELLIJ_CONFIG_DIR": configDir},
-	}
-
-	log.Debug("Writing wrapper.", "path", wrap.Path, "exec", wrap.Exec)
-	if err := lib.CreateWrap(wrap); err != nil {
-		log.Error("Failed to write wrapper.", "err", err)
-		return err
-	}
-
-	if err := lib.CreateShellAliases(binPath, zellijPath, z.ShellAliases); err != nil {
-		log.Error("Failed to write shell aliases.", "err", err)
-		return err
-	}
-
-	return nil
+	return os.WriteFile(filepath.Join(b.Out, "config.kdl"), []byte(configKdl), dotman.FilePerm)
 }
 
 // Based on zellij's 11-color theme format; see the template's comment for
@@ -144,48 +184,4 @@ func writeThemeKdl(t dotman.Theme, path string) error {
 	}
 
 	return os.WriteFile(path, []byte(b.String()), dotman.FilePerm)
-}
-
-func (z *Zellij) DownloadZellij(s *dotman.Store, version string, platform string, arch string, dest string) error {
-
-	var target string
-	switch platform + "/" + arch {
-	case "darwin/amd64":
-		target = "x86_64-apple-darwin"
-	case "darwin/arm64":
-		target = "aarch64-apple-darwin"
-	case "linux/amd64":
-		target = "x86_64-unknown-linux-musl"
-	case "linux/arm64":
-		target = "aarch64-unknown-linux-musl"
-	default:
-		return fmt.Errorf("No zellij release for %s/%s", platform, arch)
-	}
-
-	// Without a pin, FakeHash makes the download fail with the hash to pin.
-	hash, pinned := z.Hashes[target]
-	if !pinned {
-		hash = lib.FakeHash
-	}
-
-	archivePath, err := lib.DownloadGithubRelease(s, lib.GithubRelease{
-		Repo:  "zellij-org/zellij",
-		Tag:   "v" + version,
-		Asset: "zellij-" + target + ".tar.gz",
-		Hash:  hash,
-	})
-	if err != nil {
-		if mismatch, ok := errors.AsType[*lib.HashMismatchError](err); ok && !pinned {
-			return fmt.Errorf("zellij %s: no hash pinned for %s; got %s", version, target, mismatch.Got)
-		}
-
-		return fmt.Errorf("zellij %s: %w", version, err)
-	}
-
-	// The release archive holds just the zellij binary.
-	if err := lib.ExtractTarGzFile(archivePath, "zellij", dest); err != nil {
-		return fmt.Errorf("extracting zellij from %s: %w", archivePath, err)
-	}
-
-	return nil
 }
