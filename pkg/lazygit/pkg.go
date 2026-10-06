@@ -19,12 +19,6 @@ type Settings map[string]any
 type Package struct {
 	Version string
 
-	// SHA-256 of the release tar.gz for each <platform>_<arch>, as the
-	// release's checksums.txt names them, e.g. "linux_x86_64":
-	// "sha256:02be...". Installing on a target without a hash fails and
-	// reports the downloaded archive's hash.
-	Hashes map[string]string
-
 	// Overrides the global config's theme; "" uses it.
 	Theme string
 
@@ -93,17 +87,10 @@ func (p *Package) deriveBin(system string) *dotman.Derivation {
 	}
 	target := platform + "_" + arch
 
-	// Without a pin, FakeHash makes the fetch fail with the hash to pin.
-	hash, pinned := p.Hashes[target]
-	if !pinned {
-		hash = dotman.FakeHash
-	}
-
 	archive := lib.FetchGithubRelease(lib.GithubRelease{
 		Repo:  "jesseduffield/lazygit",
 		Tag:   "v" + p.Version,
 		Asset: "lazygit_" + p.Version + "_" + target + ".tar.gz",
-		Hash:  hash,
 	})
 
 	return &dotman.Derivation{

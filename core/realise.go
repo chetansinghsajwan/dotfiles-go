@@ -28,16 +28,23 @@ type Realiser struct {
 	// isn't fixed-output. See ToolchainHash.
 	Toolchain string
 
+	// Where fixed outputs without a pinned hash find it, and record it the
+	// first time they are built. nil makes such outputs an error.
+	Lock *Lock
+
 	paths    map[*Derivation]string
+	hashes   map[*Derivation]string
 	visiting map[*Derivation]bool
 }
 
-func NewRealiser(log *slog.Logger, store *Store, toolchain string) *Realiser {
+func NewRealiser(log *slog.Logger, store *Store, toolchain string, lock *Lock) *Realiser {
 	return &Realiser{
 		Store:     store,
 		Log:       log,
 		Toolchain: toolchain,
+		Lock:      lock,
 		paths:     map[*Derivation]string{},
+		hashes:    map[*Derivation]string{},
 		visiting:  map[*Derivation]bool{},
 	}
 }
@@ -90,21 +97,12 @@ func (r *Realiser) record(drv *Derivation) (*drvRecord, error) {
 	}
 
 	if drv.Fixed != nil {
-		if drv.Fixed.Hash == "" {
-			return nil, fmt.Errorf("%s: fixed output isn't pinned; pin dotman.FakeHash to find its hash", drv.Name)
+		hash, err := r.fixedHash(drv)
+		if err != nil {
+			return nil, err
 		}
 
-		mode := "flat"
-		if drv.Fixed.Recursive {
-			mode = "recursive"
-		}
-
-		return &drvRecord{
-			Name:           drv.Name,
-			Store:          r.Store.RootPath(),
-			OutputHash:     drv.Fixed.Hash,
-			OutputHashMode: mode,
-		}, nil
+		return r.fixedRecord(drv, hash), nil
 	}
 
 	if drv.Builder == nil {
@@ -137,7 +135,102 @@ func (r *Realiser) record(drv *Derivation) (*drvRecord, error) {
 	}, nil
 }
 
-// Path returns drv's store path, which may not exist yet.
+func (r *Realiser) fixedRecord(drv *Derivation, hash string) *drvRecord {
+	return &drvRecord{
+		Name:           drv.Name,
+		Store:          r.Store.RootPath(),
+		OutputHash:     hash,
+		OutputHashMode: drv.Fixed.mode(),
+	}
+}
+
+func (r *Realiser) recordPath(rec *drvRecord) (string, error) {
+	b, err := marshal(rec)
+	if err != nil {
+		return "", err
+	}
+
+	sum := sha256.Sum256(append([]byte("dotman-drv-v1\x00"), b...))
+	return filepath.Join(r.Store.RootPath(), storeHash(sum[:])+"-"+rec.Name), nil
+}
+
+// fixedHash returns the hash fixed-output drv is pinned or locked to. A
+// fixed output that is neither is built now, to find its hash, which is
+// recorded in the lock; that is how a fetch is first locked.
+func (r *Realiser) fixedHash(drv *Derivation) (string, error) {
+	if h, ok := r.hashes[drv]; ok {
+		return h, nil
+	}
+
+	f := drv.Fixed
+	if f.Hash != "" {
+		return f.Hash, nil
+	}
+
+	if f.Key == "" {
+		return "", fmt.Errorf("%s: fixed output has neither a hash nor a lock key", drv.Name)
+	}
+	if r.Lock == nil {
+		return "", fmt.Errorf("%s: fixed output isn't pinned and there's no lock", drv.Name)
+	}
+
+	if h, ok := r.Lock.Get(f.Key, f.mode()); ok {
+		r.hashes[drv] = h
+		return h, nil
+	}
+
+	h, err := r.lockFixed(drv)
+	if err != nil {
+		return "", err
+	}
+
+	r.hashes[drv] = h
+	return h, nil
+}
+
+// lockFixed builds fixed-output drv, which has no hash yet, records the
+// output's hash in the lock, and moves the output to the store path that
+// hash gives it.
+func (r *Realiser) lockFixed(drv *Derivation) (string, error) {
+	inputs, err := r.realiseInputs(drv)
+	if err != nil {
+		return "", err
+	}
+
+	r.Log.Info("Fetching to lock...", "drv", drv.Name, "key", drv.Fixed.Key)
+
+	out, err := r.tempPath(drv.Name)
+	if err != nil {
+		return "", err
+	}
+
+	if err := r.build(drv, inputs, out, ""); err != nil {
+		return "", err
+	}
+
+	hash, err := outputHash(drv, out)
+	if err != nil {
+		removeTree(out)
+		return "", err
+	}
+
+	path, err := r.recordPath(r.fixedRecord(drv, hash))
+	if err != nil {
+		removeTree(out)
+		return "", err
+	}
+
+	if err := r.moveIntoPlace(out, path); err != nil {
+		return "", err
+	}
+
+	r.Lock.Set(drv.Fixed.Key, drv.Fixed.mode(), hash)
+	r.Log.Info("Locked.", "key", drv.Fixed.Key, "hash", hash)
+	return hash, nil
+}
+
+// Path returns drv's store path, which may not exist yet. For a fetch that
+// isn't locked yet, that means fetching it; see fixedHash.
 func (r *Realiser) Path(drv *Derivation) (string, error) {
 	if path, ok := r.paths[drv]; ok {
 		return path, nil
@@ -154,13 +247,10 @@ func (r *Realiser) Path(drv *Derivation) (string, error) {
 		return "", err
 	}
 
-	b, err := marshal(rec)
+	path, err := r.recordPath(rec)
 	if err != nil {
 		return "", err
 	}
-
-	sum := sha256.Sum256(append([]byte("dotman-drv-v1\x00"), b...))
-	path := filepath.Join(r.Store.RootPath(), storeHash(sum[:])+"-"+drv.Name)
 
 	r.paths[drv] = path
 	return path, nil
@@ -204,13 +294,18 @@ func (r *Realiser) Realise(drv *Derivation) (string, error) {
 		return "", err
 	}
 
-	inputs := map[string]string{}
-	for _, name := range slices.Sorted(maps.Keys(drv.Inputs)) {
-		inputPath, err := r.Realise(drv.Inputs[name])
-		if err != nil {
+	inputs, err := r.realiseInputs(drv)
+	if err != nil {
+		return "", err
+	}
+
+	// A fixed output is checked against its locked or pinned hash, which
+	// Path has already resolved.
+	var want string
+	if drv.Fixed != nil {
+		if want, err = r.fixedHash(drv); err != nil {
 			return "", err
 		}
-		inputs[name] = inputPath
 	}
 
 	r.Log.Info("Building...", "drv", drv.Name)
@@ -220,23 +315,45 @@ func (r *Realiser) Realise(drv *Derivation) (string, error) {
 		return "", err
 	}
 
-	if err := r.build(drv, inputs, out); err != nil {
+	if err := r.build(drv, inputs, out, want); err != nil {
 		return "", err
 	}
 
-	if err := os.Rename(out, path); err != nil {
-		removeTree(out)
-
-		// Another run may have built the same path first.
-		if _, statErr := os.Lstat(path); statErr == nil {
-			return path, nil
-		}
-
+	if err := r.moveIntoPlace(out, path); err != nil {
 		return "", err
 	}
 
 	r.Log.Debug("Built.", "drv", drv.Name, "path", path)
 	return path, nil
+}
+
+func (r *Realiser) realiseInputs(drv *Derivation) (map[string]string, error) {
+	inputs := map[string]string{}
+	for _, name := range slices.Sorted(maps.Keys(drv.Inputs)) {
+		path, err := r.Realise(drv.Inputs[name])
+		if err != nil {
+			return nil, err
+		}
+		inputs[name] = path
+	}
+
+	return inputs, nil
+}
+
+// moveIntoPlace renames the built output out to its store path. If another
+// run built the same path first, out is dropped.
+func (r *Realiser) moveIntoPlace(out, path string) error {
+	err := os.Rename(out, path)
+	if err == nil {
+		return nil
+	}
+
+	removeTree(out)
+	if _, statErr := os.Lstat(path); statErr == nil {
+		return nil
+	}
+
+	return err
 }
 
 // Check rebuilds every derivation in drv's closure that isn't fixed-output,
@@ -269,7 +386,7 @@ func (r *Realiser) Check(drv *Derivation) error {
 		}
 
 		r.Log.Info("Checking...", "drv", d.Name)
-		if err := r.build(d, inputs, out); err != nil {
+		if err := r.build(d, inputs, out, ""); err != nil {
 			return err
 		}
 
@@ -309,9 +426,10 @@ func (r *Realiser) tempPath(name string) (string, error) {
 	return filepath.Join(r.Store.RootPath(), tempPrefix+hex.EncodeToString(b[:])+"-"+name), nil
 }
 
-// build runs drv's builder into out, then checks and normalizes the output.
-// out is removed if any of that fails.
-func (r *Realiser) build(drv *Derivation, inputs map[string]string, out string) (err error) {
+// build runs drv's builder into out, then checks and normalizes the output,
+// and checks it has the hash want if that is set. out is removed if any of
+// that fails.
+func (r *Realiser) build(drv *Derivation, inputs map[string]string, out, want string) (err error) {
 	defer func() {
 		if err != nil {
 			removeTree(out)
@@ -352,9 +470,14 @@ func (r *Realiser) build(drv *Derivation, inputs map[string]string, out string) 
 		return fmt.Errorf("building %s: normalizing output: %w", drv.Name, err)
 	}
 
-	if drv.Fixed != nil {
-		if err := checkFixed(drv, out); err != nil {
+	if want != "" {
+		got, err := outputHash(drv, out)
+		if err != nil {
 			return err
+		}
+
+		if got != want {
+			return &HashMismatchError{Name: drv.Name, Want: want, Got: got}
 		}
 	}
 
@@ -373,31 +496,22 @@ func runBuilder(builder *Builder, b *Build) (err error) {
 	return builder.Build(b)
 }
 
-func checkFixed(drv *Derivation, out string) error {
-	var got string
-	var err error
-
+// outputHash returns the hash of fixed-output drv's output at out, flat or
+// recursive as drv says.
+func outputHash(drv *Derivation, out string) (string, error) {
 	if drv.Fixed.Recursive {
-		got, err = PathTreeHash(out)
-	} else {
-		info, statErr := os.Lstat(out)
-		if statErr != nil {
-			return statErr
-		}
-		if !info.Mode().IsRegular() {
-			return fmt.Errorf("%s: flat fixed output must be a regular file", drv.Name)
-		}
-		got, err = FileHash(out)
+		return PathTreeHash(out)
 	}
+
+	info, err := os.Lstat(out)
 	if err != nil {
-		return err
+		return "", err
+	}
+	if !info.Mode().IsRegular() {
+		return "", fmt.Errorf("%s: flat fixed output must be a regular file", drv.Name)
 	}
 
-	if got != drv.Fixed.Hash {
-		return &HashMismatchError{Name: drv.Name, Want: drv.Fixed.Hash, Got: got}
-	}
-
-	return nil
+	return FileHash(out)
 }
 
 // checkSelfRefs fails if any file or symlink target under out contains out,

@@ -13,9 +13,22 @@ import (
 
 func newTestRealiser(t *testing.T) *Realiser {
 	t.Helper()
-	store := NewStoreWithPath(filepath.Join(t.TempDir(), "store"))
+	dir := t.TempDir()
+	store := NewStoreWithPath(filepath.Join(dir, "store"))
 	t.Cleanup(func() { removeTree(store.RootPath()) })
-	return NewRealiser(slog.New(slog.NewTextHandler(io.Discard, nil)), store, "toolchain")
+
+	lock, err := LoadLock(filepath.Join(dir, "dotman.lock"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	return NewRealiser(slog.New(slog.NewTextHandler(io.Discard, nil)), store, "toolchain", lock)
+}
+
+// againWith returns a fresh realiser on r's store and lock, as a later run
+// would have.
+func againWith(r *Realiser) *Realiser {
+	return NewRealiser(r.Log, r.Store, r.Toolchain, r.Lock)
 }
 
 // writer returns a derivation whose output is a file holding content, and
@@ -154,24 +167,111 @@ func TestRealiseRejectsSelfReferencingSymlink(t *testing.T) {
 	}
 }
 
-func TestFixedOutputHashMismatch(t *testing.T) {
+// fetch returns a fixed-output derivation locked under key whose output is
+// a file holding *content, as a download of a url would be.
+func fetch(key string, content *string, builds *int) *Derivation {
+	return &Derivation{
+		Name: "fetched",
+		Builder: &Builder{Name: "fetch", Build: func(b *Build) error {
+			*builds++
+			return os.WriteFile(b.Out, []byte(*content), FilePerm)
+		}},
+		Fixed: &FixedOutput{Key: key},
+	}
+}
+
+func TestUnlockedFetchIsLocked(t *testing.T) {
 	r := newTestRealiser(t)
+	content := "v1"
 	var builds int
 
-	drv := writer("fetched", "content", &builds)
-	drv.Fixed = &FixedOutput{Hash: FakeHash}
+	path, err := r.Realise(fetch("https://example.com/x", &content, &builds))
+	if err != nil {
+		t.Fatal(err)
+	}
 
-	_, err := r.Realise(drv)
-	mismatch, ok := errors.AsType[*HashMismatchError](err)
+	hash, ok := r.Lock.Get("https://example.com/x", "flat")
 	if !ok {
+		t.Fatal("fetch wasn't locked")
+	}
+	if want, _ := FileHash(path); hash != want {
+		t.Errorf("locked %s, want %s", hash, want)
+	}
+	if builds != 1 {
+		t.Errorf("fetched %d times, want 1", builds)
+	}
+
+	if err := r.Lock.Save(); err != nil {
+		t.Fatal(err)
+	}
+	reloaded, err := LoadLock(r.Lock.Path())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if h, _ := reloaded.Get("https://example.com/x", "flat"); h != hash {
+		t.Errorf("saved lock has %q, want %q", h, hash)
+	}
+
+	// A later run finds the path from the lock, without fetching.
+	r2 := againWith(r)
+	path2, err := r2.Realise(fetch("https://example.com/x", &content, &builds))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if path2 != path || builds != 1 {
+		t.Errorf("second run: path %s, %d fetches; want %s, 1", path2, builds, path)
+	}
+}
+
+func TestLockedFetchDetectsUpstreamChange(t *testing.T) {
+	r := newTestRealiser(t)
+	content := "v1"
+	var builds int
+
+	path, err := r.Realise(fetch("https://example.com/x", &content, &builds))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// The download is gone, as after gc, and upstream changed.
+	if err := removeTree(path); err != nil {
+		t.Fatal(err)
+	}
+	content = "v2"
+
+	_, err = againWith(r).Realise(fetch("https://example.com/x", &content, &builds))
+	if _, ok := errors.AsType[*HashMismatchError](err); !ok {
 		t.Fatalf("err = %v, want *HashMismatchError", err)
 	}
 	assertNoTempPaths(t, r.Store)
 
-	// Pinning the reported hash makes it build.
-	drv.Fixed.Hash = mismatch.Got
-	if _, err := r.Realise(drv); err != nil {
+	// Forgetting the entry, as dotman update does, accepts the new file.
+	r.Lock.Delete([]string{"https://example.com/x"})
+	if _, err := againWith(r).Realise(fetch("https://example.com/x", &content, &builds)); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestLockModeMustMatch(t *testing.T) {
+	r := newTestRealiser(t)
+	r.Lock.Set("k", "flat", "sha256:00")
+
+	if _, ok := r.Lock.Get("k", "recursive"); ok {
+		t.Error("flat entry used for a recursive fetch")
+	}
+}
+
+func TestLockPrune(t *testing.T) {
+	r := newTestRealiser(t)
+	r.Lock.Set("old", "flat", "sha256:00")
+	r.Lock.Set("current", "flat", "sha256:11")
+
+	pruned := r.Lock.Prune(map[string]bool{"current": true})
+	if len(pruned) != 1 || pruned[0] != "old" {
+		t.Errorf("pruned %v, want [old]", pruned)
+	}
+	if _, ok := r.Lock.Get("current", "flat"); !ok {
+		t.Error("pruned an entry in use")
 	}
 }
 
@@ -191,14 +291,14 @@ func TestFixedOutputPathIgnoresBuilder(t *testing.T) {
 	}
 }
 
-func TestUnpinnedFixedOutputFails(t *testing.T) {
+func TestFixedOutputWithoutHashOrKeyFails(t *testing.T) {
 	r := newTestRealiser(t)
 	var builds int
 
 	drv := writer("f", "x", &builds)
 	drv.Fixed = &FixedOutput{}
 	if _, err := r.Path(drv); err == nil {
-		t.Fatal("unpinned fixed output got a path")
+		t.Fatal("fixed output with neither a hash nor a key got a path")
 	}
 }
 

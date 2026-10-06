@@ -36,11 +36,11 @@ type Derivation struct {
 	// contents, are hashed, so changing one changes this one too.
 	Inputs map[string]*Derivation
 
-	// Fixed, if set, pins the output's content hash, and the store path is
-	// computed from that hash instead of the derivation, like Nix's
-	// fixed-output derivations. It is for fetches: the output is checked
-	// against the hash, so the builder and its inputs are free to change, or
-	// to be impure, like a download.
+	// Fixed, if set, makes the store path depend only on the output's
+	// content hash, instead of on the derivation, like Nix's fixed-output
+	// derivations. It is for fetches: the output is checked against the
+	// hash, so the builder and its inputs are free to change, or to be
+	// impure, like a download.
 	Fixed *FixedOutput
 
 	// Programs the output runs from the host's PATH rather than from the
@@ -48,13 +48,27 @@ type Derivation struct {
 	HostDeps []string
 }
 
-// FixedOutput pins a derivation's output to Hash, "sha256:<hex>".
+// FixedOutput describes a fixed output's content hash.
 type FixedOutput struct {
+	// Pins the output to this "sha256:<hex>". If it is "", the hash comes
+	// from the lock under Key, and the first build records it there.
 	Hash string
+
+	// Names the output in the lock, e.g. the url it is downloaded from. It
+	// must be set if Hash isn't.
+	Key string
 
 	// Recursive hashes the output as a tree (see TreeHash); otherwise the
 	// output must be a single file, hashed flat (see FileHash).
 	Recursive bool
+}
+
+// mode returns how f's output is hashed, as the lock records it.
+func (f *FixedOutput) mode() string {
+	if f.Recursive {
+		return "recursive"
+	}
+	return "flat"
 }
 
 // Builder builds a derivation's output.

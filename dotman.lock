@@ -1,0 +1,61 @@
+{
+  "version": 1,
+  "fetches": {
+    "https://github.com/dedukun/bookmarks.yazi/archive/9ef1254.tar.gz": {
+      "hash": "sha256:01a541ce58d095361e2a0ea507473e2b40766c483a077ac55a4c453ffc9e009f",
+      "mode": "recursive"
+    },
+    "https://github.com/jesseduffield/lazygit/releases/download/v0.65.1/lazygit_0.65.1_darwin_arm64.tar.gz": {
+      "hash": "sha256:65a367c6ea9a88efebaaf7998a6835eedb987e04916cef677264ff9b31b1b13e",
+      "mode": "flat"
+    },
+    "https://github.com/jesseduffield/lazygit/releases/download/v0.65.1/lazygit_0.65.1_darwin_x86_64.tar.gz": {
+      "hash": "sha256:fde13daf583511aa24c42ca154911643231a5af784c7cdd8117264b2fc035b33",
+      "mode": "flat"
+    },
+    "https://github.com/jesseduffield/lazygit/releases/download/v0.65.1/lazygit_0.65.1_linux_arm64.tar.gz": {
+      "hash": "sha256:49abecdf6adf4f2dfdb11bf7b9bfada267ea523612ed809d1c6d87f6c04000a7",
+      "mode": "flat"
+    },
+    "https://github.com/jesseduffield/lazygit/releases/download/v0.65.1/lazygit_0.65.1_linux_x86_64.tar.gz": {
+      "hash": "sha256:02beacbcda0fa342e50ae3480ba8147307353af3fb28e1d5f790e02329c201a6",
+      "mode": "flat"
+    },
+    "https://github.com/sxyazi/yazi/releases/download/v26.9.1/yazi-aarch64-apple-darwin.zip": {
+      "hash": "sha256:3921182a21cceb0a505e5dac578e1487d48104caa5f114e9f8adf40b5a7289a9",
+      "mode": "flat"
+    },
+    "https://github.com/sxyazi/yazi/releases/download/v26.9.1/yazi-aarch64-unknown-linux-musl.zip": {
+      "hash": "sha256:dd569daecaae914185f295634109295ccd25c1b42b02eb89a74f651970024f2e",
+      "mode": "flat"
+    },
+    "https://github.com/sxyazi/yazi/releases/download/v26.9.1/yazi-x86_64-apple-darwin.zip": {
+      "hash": "sha256:36e09036fcc446488d876d139a5e303f2443b82cfb6ac7dfcb43892d6fe6fa20",
+      "mode": "flat"
+    },
+    "https://github.com/sxyazi/yazi/releases/download/v26.9.1/yazi-x86_64-unknown-linux-musl.zip": {
+      "hash": "sha256:9b9c39decccf8cb0ff53a7d637d38f8a79d93bbd0099f4ea9c619ef6bb392f5d",
+      "mode": "flat"
+    },
+    "https://github.com/yazi-rs/plugins/archive/7200d73.tar.gz": {
+      "hash": "sha256:7ab42f1707438821a1845c1a21cb6e3af3751f657f118c1f5c7baddc0b657df0",
+      "mode": "recursive"
+    },
+    "https://github.com/zellij-org/zellij/releases/download/v0.45.1/zellij-aarch64-apple-darwin.tar.gz": {
+      "hash": "sha256:c029ba4fe1927b79ad9f0cdd59155c4dff80777863c85857d4d09b88b56f9891",
+      "mode": "flat"
+    },
+    "https://github.com/zellij-org/zellij/releases/download/v0.45.1/zellij-aarch64-unknown-linux-musl.tar.gz": {
+      "hash": "sha256:05f0802afadd53f8db9514e7cae53c9ae8432fed1b35b8294aa816ee3044a16b",
+      "mode": "flat"
+    },
+    "https://github.com/zellij-org/zellij/releases/download/v0.45.1/zellij-x86_64-apple-darwin.tar.gz": {
+      "hash": "sha256:8e8bea22737d1652278c51fc5c26c7c22c9855d0ebb9634a84b8873823093114",
+      "mode": "flat"
+    },
+    "https://github.com/zellij-org/zellij/releases/download/v0.45.1/zellij-x86_64-unknown-linux-musl.tar.gz": {
+      "hash": "sha256:40bcc2e03f5d5ae8e054e39f676081fe12ab70871506996ba595834c3718eefc",
+      "mode": "flat"
+    }
+  }
+}

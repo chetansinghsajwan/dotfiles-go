@@ -5,8 +5,10 @@ import (
 	"flag"
 	"fmt"
 	"log/slog"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 
 	"dotman/configured/lazygit"
@@ -42,6 +44,12 @@ commands:
                        then every store path no generation uses
   show-drv [-r] <pkg>  print the derivation a package's store path is a hash
                        of; -r also prints its inputs'
+  lock [--all-systems] fetch and lock every download not in dotman.lock yet,
+                       for this system or every system, and drop entries no
+                       system uses
+  update [pkg...]      forget the locked hashes of packages' downloads, or of
+                       every download, and lock them again, accepting files
+                       that changed upstream
 `
 
 // devMode reports whether DOTMAN_DEV is set to a true value, like 1 or true.
@@ -69,18 +77,31 @@ func main() {
 
 	if err := run(storeRoot, os.Args[1:]); err != nil {
 		slog.Error(err.Error())
+
+		if _, ok := errors.AsType[*dotman.HashMismatchError](err); ok {
+			slog.Error("A download doesn't match dotman.lock. If it changed upstream on purpose, run `dotman update <pkg>`.")
+		}
+
 		os.Exit(1)
 	}
+}
+
+// lockPath returns the path of dotman.lock, at the root of the checkout
+// dotman is built from, next to the config it locks. Like lib.Rel, it relies
+// on running from that checkout, as dm.sh does.
+func lockPath() string {
+	return lib.Rel("../../dotman.lock")
 }
 
 type app struct {
 	log  *slog.Logger
 	ev   *dotman.Eval
 	r    *dotman.Realiser
+	lock *dotman.Lock
 	gens *dotman.Generations
 }
 
-func run(storeRoot string, args []string) error {
+func run(storeRoot string, args []string) (err error) {
 	cmd := "switch"
 	if len(args) > 0 {
 		cmd, args = args[0], args[1:]
@@ -101,10 +122,24 @@ func run(storeRoot string, args []string) error {
 		return err
 	}
 
+	lock, err := dotman.LoadLock(lockPath())
+	if err != nil {
+		return err
+	}
+
+	// Hashes locked before a failure are still right, so the lock is saved
+	// either way.
+	defer func() {
+		if saveErr := lock.Save(); saveErr != nil {
+			err = errors.Join(err, fmt.Errorf("saving lock: %w", saveErr))
+		}
+	}()
+
 	a := &app{
 		log:  slog.Default(),
 		ev:   dotman.NewEval(dotman.DefaultConfig),
-		r:    dotman.NewRealiser(slog.Default(), dotman.NewStoreWithPath(storeRoot), toolchain),
+		r:    dotman.NewRealiser(slog.Default(), dotman.NewStoreWithPath(storeRoot), toolchain, lock),
+		lock: lock,
 		gens: dotman.NewGenerations(stateDir),
 	}
 
@@ -121,6 +156,10 @@ func run(storeRoot string, args []string) error {
 		return a.gcCmd(args)
 	case "show-drv":
 		return a.showDrvCmd(args)
+	case "lock":
+		return a.lockCmd(args)
+	case "update":
+		return a.updateCmd(args)
 	}
 
 	fmt.Fprint(os.Stderr, usage)
@@ -137,15 +176,20 @@ func noArgs(fs *flag.FlagSet, args []string) error {
 	return nil
 }
 
-// derive returns each package's derivation, by package name.
+// derive returns each package's derivation for this system, by package
+// name.
 func (a *app) derive() (map[string]*dotman.Derivation, error) {
+	return a.deriveFor(a.ev)
+}
+
+func (a *app) deriveFor(ev *dotman.Eval) (map[string]*dotman.Derivation, error) {
 	drvs := map[string]*dotman.Derivation{}
 	for _, p := range packages {
 		if _, dup := drvs[p.Name()]; dup {
 			return nil, fmt.Errorf("two packages named %s", p.Name())
 		}
 
-		drv, err := p.Derive(a.ev)
+		drv, err := p.Derive(ev)
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", p.Name(), err)
 		}
@@ -163,6 +207,11 @@ func (a *app) selectDrvs(names []string) ([]*dotman.Derivation, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	return selectFrom(drvs, names)
+}
+
+func selectFrom(drvs map[string]*dotman.Derivation, names []string) ([]*dotman.Derivation, error) {
 	profile := dotman.Profile(drvs)
 
 	if len(names) == 0 {
@@ -207,6 +256,155 @@ func (a *app) switchCmd(args []string) error {
 	}
 
 	a.log.Info("Switched profile.", "generation", n, "profile", profilePath)
+
+	// The switch already happened, so a lock that can't be pruned only
+	// keeps a few unused entries until the next run.
+	if err := a.pruneLock(); err != nil {
+		a.log.Warn("Not pruning lock.", "err", err)
+	}
+
+	return nil
+}
+
+// evalsFor returns an Eval for each system in dotman.Systems, or only this
+// one.
+func (a *app) evalsFor(allSystems bool) []*dotman.Eval {
+	if !allSystems {
+		return []*dotman.Eval{a.ev}
+	}
+
+	var evs []*dotman.Eval
+	for _, system := range dotman.Systems {
+		evs = append(evs, &dotman.Eval{Config: a.ev.Config, System: system})
+	}
+	return evs
+}
+
+// lockKeys returns the lock keys of the downloads of the packages called
+// names, or of every package, on every system, so a lock shared between
+// machines keeps what each of them needs.
+func (a *app) lockKeys(names []string) (map[string]bool, error) {
+	keys := map[string]bool{}
+	for _, ev := range a.evalsFor(true) {
+		drvs, err := a.deriveFor(ev)
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", ev.System, err)
+		}
+
+		selected, err := selectFrom(drvs, names)
+		if err != nil {
+			return nil, err
+		}
+
+		for key := range dotman.FixedKeys(selected...) {
+			keys[key] = true
+		}
+	}
+
+	return keys, nil
+}
+
+// pruneLock drops lock entries no package uses on any system, like those of
+// versions no longer configured.
+func (a *app) pruneLock() error {
+	keys, err := a.lockKeys(nil)
+	if err != nil {
+		return fmt.Errorf("pruning lock: %w", err)
+	}
+
+	if pruned := a.lock.Prune(keys); len(pruned) > 0 {
+		a.log.Info("Dropped unused lock entries.", "count", len(pruned))
+	}
+
+	return nil
+}
+
+// lockFetches locks every download of drvs, or only those whose keys are
+// in only if it isn't nil, fetching those not locked yet.
+func (a *app) lockFetches(drvs []*dotman.Derivation, only map[string]bool) error {
+	for _, drv := range drvs {
+		for _, d := range dotman.Closure(drv) {
+			if d.Fixed == nil || d.Fixed.Key == "" {
+				continue
+			}
+			if only != nil && !only[d.Fixed.Key] {
+				continue
+			}
+
+			// Computing a fetch's path locks it.
+			if _, err := a.r.Path(d); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+func (a *app) lockCmd(args []string) error {
+	fs := flag.NewFlagSet("lock", flag.ContinueOnError)
+	allSystems := fs.Bool("all-systems", false, "lock the downloads of every system, not just this one")
+	if err := noArgs(fs, args); err != nil {
+		return err
+	}
+
+	for _, ev := range a.evalsFor(*allSystems) {
+		drvs, err := a.deriveFor(ev)
+		if err != nil {
+			return fmt.Errorf("%s: %w", ev.System, err)
+		}
+
+		selected, err := selectFrom(drvs, nil)
+		if err != nil {
+			return err
+		}
+
+		if err := a.lockFetches(selected, nil); err != nil {
+			return err
+		}
+	}
+
+	return a.pruneLock()
+}
+
+func (a *app) updateCmd(args []string) error {
+	fs := flag.NewFlagSet("update", flag.ContinueOnError)
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	keys, err := a.lockKeys(fs.Args())
+	if err != nil {
+		return err
+	}
+
+	// Every system's entries are forgotten and locked again, so the lock
+	// keeps covering the systems it covered, and no machine checks against
+	// a hash that is out of date.
+	forgotten := a.lock.Delete(slices.Sorted(maps.Keys(keys)))
+	a.log.Info("Forgot locked hashes.", "count", len(forgotten))
+
+	relock := map[string]bool{}
+	for _, key := range forgotten {
+		relock[key] = true
+	}
+
+	for _, ev := range a.evalsFor(true) {
+		drvs, err := a.deriveFor(ev)
+		if err != nil {
+			return fmt.Errorf("%s: %w", ev.System, err)
+		}
+
+		selected, err := selectFrom(drvs, fs.Args())
+		if err != nil {
+			return err
+		}
+
+		if err := a.lockFetches(selected, relock); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 

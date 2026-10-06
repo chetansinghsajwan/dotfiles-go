@@ -14,7 +14,7 @@ from the original plan, this document describes the implementation.
 
 | Piece | Before | Now |
 |---|---|---|
-| Downloads | `PathForUrl(url, hash)`, unpinned allowed | Fixed-output derivations keyed by name + content hash; unpinned is an error |
+| Downloads | `PathForUrl(url, hash)`, hashes pinned by hand or not at all | Fixed-output derivations keyed by name + content hash; hashes kept in `dotman.lock` |
 | Package outputs | `CreatePath` → `uuid-name`, rebuilt every run | Input-addressed, built once |
 | Profile | uuid-named, no generations | A derivation; generations, rollback, GC |
 | Package code | `Install(log, cfg, store, storePath)` | `Derive(ev)` returns data; builders build it |
@@ -115,8 +115,6 @@ Editing a theme's colors then changes the hash, not only renaming the theme.
 | Package | drv JSON | yazi, zellij, lazygit, pv, op |
 | Profile | the package output paths | Merges `bin/`, `share/` |
 
-- **Unpinned downloads are an error.** `FakeHash` stays as the way to discover
-  the right hash.
 - Fetch helpers live in `lib/fetch.go`: `FetchUrl`, `FetchGithubRelease`
   (flat), and `FetchTarball`, `FetchGithubArchive` (tree).
 - Tree hash (`TreeHash`): deterministic walk over sorted paths, hashing each
@@ -124,7 +122,45 @@ Editing a theme's colors then changes the hash, not only renaming the theme.
   mode bits and times are left out, so a tree hashes the same before and
   after normalization, and an `embed.FS` hashes the same as its copy.
 - Fixed-output builders may be impure (download, close over an `fs.FS`):
-  the output is checked against the pinned hash instead.
+  the output is checked against its pinned or locked hash instead.
+
+## The lock
+
+Users never write hashes. Packages say only what to fetch (a version, a
+revision), and dotman keeps the hashes in `dotman.lock`, at the repo root
+and committed, like `go.sum`:
+
+```json
+{
+  "version": 1,
+  "fetches": {
+    "https://github.com/sxyazi/yazi/releases/download/v26.9.1/yazi-x86_64-unknown-linux-musl.zip": {
+      "hash": "sha256:9b9c…",
+      "mode": "flat"
+    }
+  }
+}
+```
+
+- A fetch's `FixedOutput` has a `Key` (its url) and no `Hash`. The realiser
+  looks the key up in the lock (`core/lock.go`).
+- **Not locked yet:** the realiser fetches it while computing its path,
+  hashes the output, stores it at the path that hash gives, and records the
+  hash. This is trust on first use.
+- **Locked:** the path comes from the locked hash. If the path is missing
+  (new machine, after `gc`), the fetch runs and must match, or the build fails
+  with a hash mismatch and a hint to run `dotman update`.
+- **Every system:** packages derive for any `Eval.System` without IO, so
+  dotman can list the fetches of all four systems. `switch` prunes entries no
+  system uses (e.g. old versions). `update` forgets and re-locks a package's
+  entries for every system the lock covered. `lock --all-systems` fills in
+  every system up front.
+- `mode` (flat or recursive) is part of an entry, so a url locked as a file
+  isn't trusted as a tree.
+- `LocalSource` still pins its hash directly, computed from the embedded
+  files at eval time; it never goes in the lock.
+- The lock is saved even when a run fails, since the hashes it recorded are
+  still right. Writes are atomic, and keys are sorted so diffs are clean.
 
 ## Realisation
 
@@ -135,7 +171,7 @@ out  = <store>/.tmp-<random>-<name>   # not created; the builder creates it
 build(out)
 checkSelfRefs(out)    # fail if any file or symlink contains out
 normalize(out)        # mtimes, modes, read-only
-checkFixed(out)       # fixed-output only: compare against the pinned hash
+checkFixed(out)       # fixed-output only: compare against the locked hash
 rename(out, path)     # lost a race and path exists: delete out, done
 ```
 
@@ -240,6 +276,8 @@ zellij`), so they don't refer to their own output either.
 | `dotman generations` | List generations, marking the current one |
 | `dotman gc [--keep N]` | Delete unreachable store paths |
 | `dotman show-drv [-r] <pkg>` | Print the hashed JSON, to answer "why did this rebuild?"; `-r` includes inputs |
+| `dotman lock [--all-systems]` | Fetch and lock everything not locked yet; prune unused entries |
+| `dotman update [pkg…]` | Forget and re-lock packages' downloads, accepting upstream changes |
 
 ## Migration
 

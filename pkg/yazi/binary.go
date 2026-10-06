@@ -35,7 +35,7 @@ type binAttrs struct {
 }
 
 // deriveBin returns the derivation that extracts yazi's binaries from the
-// release p.Version for system, checked against p.Hashes.
+// release p.Version for system.
 func (p *Package) deriveBin(system string) (*dotman.Derivation, error) {
 	if p.Version == "" {
 		return nil, fmt.Errorf("yazi: Version isn't set")
@@ -46,17 +46,10 @@ func (p *Package) deriveBin(system string) (*dotman.Derivation, error) {
 		return nil, err
 	}
 
-	// Without a pin, FakeHash makes the fetch fail with the hash to pin.
-	hash, pinned := p.Hashes[target]
-	if !pinned {
-		hash = dotman.FakeHash
-	}
-
 	archive := lib.FetchGithubRelease(lib.GithubRelease{
 		Repo:  "sxyazi/yazi",
 		Tag:   p.Version,
 		Asset: "yazi-" + target + ".zip",
-		Hash:  hash,
 	})
 
 	return &dotman.Derivation{

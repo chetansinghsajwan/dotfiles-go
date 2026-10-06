@@ -24,11 +24,6 @@ type Package struct {
 	// Release tag of yazi to install, e.g. "v26.9.1".
 	Version string
 
-	// SHA-256 of the release zip for each target triple, as GitHub shows it,
-	// e.g. "x86_64-unknown-linux-musl": "sha256:9b9c...". Installing on a
-	// target without a hash fails and reports the downloaded zip's hash.
-	Hashes map[string]string
-
 	// Programs yazi's config runs from PATH.
 	HostDeps []string
 

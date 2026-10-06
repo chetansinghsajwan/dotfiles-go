@@ -78,31 +78,30 @@ var fetchTarballBuilder = &dotman.Builder{
 	},
 }
 
-// FetchUrl returns a derivation that downloads url as a single file, whose
-// SHA-256 is pinned to hash, "sha256:<hex>". Its store path depends only on
-// its name, the url's last element, and hash, so changing to a mirror with
-// the same file reuses the download. Pin dotman.FakeHash to have the fetch
-// fail with the hash to pin.
-func FetchUrl(url, hash string) *dotman.Derivation {
+// FetchUrl returns a derivation that downloads url as a single file. The
+// first download records the file's SHA-256 in the lock under url, and later
+// ones, on any machine sharing the lock, must match it. Its store path
+// depends only on its name, the url's last element, and that hash.
+func FetchUrl(url string) *dotman.Derivation {
 	return &dotman.Derivation{
 		Name:    storeName(path.Base(url)),
 		Builder: fetchUrlBuilder,
 		Attrs:   fetchAttrs{Url: url},
-		Fixed:   &dotman.FixedOutput{Hash: hash},
+		Fixed:   &dotman.FixedOutput{Key: url},
 	}
 }
 
 // FetchTarball returns a derivation that downloads the tar.gz at url and
 // unpacks it, without its single top-level directory, as GitHub's source
-// archives have. hash pins the unpacked tree (see dotman.TreeHash), not the
-// archive, since GitHub doesn't promise its archives are byte-stable, like
-// Nix's fetchzip.
-func FetchTarball(name, url, hash string) *dotman.Derivation {
+// archives have. The lock records the hash of the unpacked tree (see
+// dotman.TreeHash), not of the archive, since GitHub doesn't promise its
+// archives are byte-stable, like Nix's fetchzip.
+func FetchTarball(name, url string) *dotman.Derivation {
 	return &dotman.Derivation{
 		Name:    storeName(name),
 		Builder: fetchTarballBuilder,
 		Attrs:   fetchAttrs{Url: url},
-		Fixed:   &dotman.FixedOutput{Hash: hash, Recursive: true},
+		Fixed:   &dotman.FixedOutput{Key: url, Recursive: true},
 	}
 }
 
@@ -127,19 +126,16 @@ type GithubRelease struct {
 	Repo  string
 	Tag   string
 	Asset string
-
-	// Pins the asset's SHA-256, as GitHub shows it.
-	Hash string
 }
 
 // FetchGithubRelease returns a derivation that downloads r's asset, like
 // FetchUrl.
 func FetchGithubRelease(r GithubRelease) *dotman.Derivation {
-	return FetchUrl(GetGithubUrl(r.Repo, r.Tag, r.Asset), r.Hash)
+	return FetchUrl(GetGithubUrl(r.Repo, r.Tag, r.Asset))
 }
 
 // FetchGithubArchive returns a derivation that downloads and unpacks repo's
 // source at rev, like FetchTarball.
-func FetchGithubArchive(repo, rev, hash string) *dotman.Derivation {
-	return FetchTarball(path.Base(repo)+"-"+rev, GetGithubArchiveUrl(repo, rev), hash)
+func FetchGithubArchive(repo, rev string) *dotman.Derivation {
+	return FetchTarball(path.Base(repo)+"-"+rev, GetGithubArchiveUrl(repo, rev))
 }

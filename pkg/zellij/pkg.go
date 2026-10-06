@@ -18,13 +18,6 @@ type Zellij struct {
 	// 0.45.1
 	Version string
 
-	// SHA-256 of the release tar.gz for each target triple, e.g.
-	// "x86_64-unknown-linux-musl": "sha256:40bc...". The release's .sha256sum
-	// files hash the binary inside, not the tar.gz, so they can't be used
-	// here. Installing on a target without a hash fails and reports the
-	// downloaded archive's hash.
-	Hashes map[string]string
-
 	// Overrides the global config's theme; "" uses it.
 	Theme string
 
@@ -101,17 +94,10 @@ func (z *Zellij) deriveBin(system string) (*dotman.Derivation, error) {
 		return nil, fmt.Errorf("no zellij release for %s", system)
 	}
 
-	// Without a pin, FakeHash makes the fetch fail with the hash to pin.
-	hash, pinned := z.Hashes[target]
-	if !pinned {
-		hash = dotman.FakeHash
-	}
-
 	archive := lib.FetchGithubRelease(lib.GithubRelease{
 		Repo:  "zellij-org/zellij",
 		Tag:   "v" + z.Version,
 		Asset: "zellij-" + target + ".tar.gz",
-		Hash:  hash,
 	})
 
 	return &dotman.Derivation{

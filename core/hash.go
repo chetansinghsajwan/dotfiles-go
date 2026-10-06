@@ -18,13 +18,8 @@ import (
 // shows release asset hashes.
 const HashPrefix = "sha256:"
 
-// FakeHash never matches, so pinning it makes a fetch fail with a
-// *HashMismatchError that reports the real hash to pin, like Nix's
-// lib.fakeHash.
-const FakeHash = HashPrefix
-
-// HashMismatchError is returned when a fixed-output derivation's output
-// doesn't have the hash it was pinned to.
+// HashMismatchError is returned when a fixed output doesn't have the hash
+// it is pinned or locked to, like when a download changed upstream.
 type HashMismatchError struct {
 	Name string
 	Want string
@@ -32,10 +27,6 @@ type HashMismatchError struct {
 }
 
 func (e *HashMismatchError) Error() string {
-	if e.Want == FakeHash {
-		return fmt.Sprintf("%s: no hash pinned; got %s", e.Name, e.Got)
-	}
-
 	return fmt.Sprintf("%s: hash mismatch: want %s, got %s", e.Name, e.Want, e.Got)
 }
 

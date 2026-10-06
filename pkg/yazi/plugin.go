@@ -25,11 +25,6 @@ type Plugin struct {
 	// Git revision to pin, e.g. a commit. Unused for local plugins.
 	Version string
 
-	// Pins the tree hash of the repo's source at Version (see
-	// lib.FetchTarball). Plugins from the same repo and revision share it.
-	// Unused for local plugins.
-	Hash string
-
 	name    string
 	isLocal bool
 
@@ -43,10 +38,10 @@ type Plugin struct {
 }
 
 // NewPlugin returns a plugin downloaded from GitHub at version, a git
-// revision, whose source tree is pinned to hash. Pin dotman.FakeHash to find
-// the hash.
-func NewPlugin(pluginPath, version, hash string) Plugin {
-	p := Plugin{Path: pluginPath, Version: version, Hash: hash, isLocal: false}
+// revision. Its source's hash is recorded in the lock the first time it is
+// downloaded.
+func NewPlugin(pluginPath, version string) Plugin {
+	p := Plugin{Path: pluginPath, Version: version, isLocal: false}
 
 	if strings.HasPrefix(pluginPath, "./") || filepath.IsAbs(pluginPath) {
 		panic(fmt.Sprintf("yazi plugin %s: local plugins must use NewLocalPlugin", pluginPath))
@@ -121,5 +116,5 @@ func (p Plugin) derive() (*dotman.Derivation, pluginAttrs, error) {
 	}
 
 	attrs.Dir = p.dir
-	return lib.FetchGithubArchive(p.repo, p.Version, p.Hash), attrs, nil
+	return lib.FetchGithubArchive(p.repo, p.Version), attrs, nil
 }
