@@ -1,6 +1,6 @@
 package theme
 
-import "dotman"
+import "dotman/core"
 
 var OneDark = dotman.Theme{
 	Name:    "one-dark",

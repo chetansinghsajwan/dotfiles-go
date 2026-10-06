@@ -1,7 +1,7 @@
 package op
 
 import (
-	"dotman"
+	"dotman/core"
 	"dotman/lib"
 
 	_ "embed"

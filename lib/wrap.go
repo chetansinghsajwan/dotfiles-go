@@ -8,7 +8,7 @@ import (
 	"slices"
 	"strings"
 
-	"dotman"
+	"dotman/core"
 )
 
 // Wrap describes a script that runs Exec with extra environment and leading

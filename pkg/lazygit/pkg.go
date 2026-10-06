@@ -12,7 +12,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"dotman"
+	"dotman/core"
 	"dotman/lib"
 	"dotman/theme"
 )

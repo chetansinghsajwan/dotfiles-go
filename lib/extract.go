@@ -11,7 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"dotman"
+	"dotman/core"
 )
 
 // extractFile writes the file name in zr to dst as an executable.

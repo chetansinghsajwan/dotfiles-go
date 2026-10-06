@@ -1,6 +1,6 @@
 package theme
 
-import "dotman"
+import "dotman/core"
 
 var Dracula = dotman.Theme{
 	Name:    "dracula",

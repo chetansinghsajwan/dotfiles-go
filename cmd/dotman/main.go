@@ -5,12 +5,12 @@ import (
 	"os"
 	"strconv"
 
-	"dotman"
 	"dotman/configured/lazygit"
 	"dotman/configured/op"
 	"dotman/configured/pv"
 	"dotman/configured/yazi"
 	"dotman/configured/zellij"
+	"dotman/core"
 	"dotman/logging"
 )
 

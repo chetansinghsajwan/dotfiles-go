@@ -1,6 +1,6 @@
 package theme
 
-import "dotman"
+import "dotman/core"
 
 var SolarizedLight = dotman.Theme{
 	Name:    "solarized-light",

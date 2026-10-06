@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"dotman"
+	"dotman/core"
 	"dotman/lib"
 )
 

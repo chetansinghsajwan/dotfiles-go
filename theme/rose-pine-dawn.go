@@ -1,6 +1,6 @@
 package theme
 
-import "dotman"
+import "dotman/core"
 
 var RosePineDawn = dotman.Theme{
 	Name:    "rose-pine-dawn",

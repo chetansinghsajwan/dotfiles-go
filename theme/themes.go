@@ -3,7 +3,7 @@ package theme
 import (
 	"fmt"
 
-	"dotman"
+	"dotman/core"
 )
 
 var Themes = []dotman.Theme{

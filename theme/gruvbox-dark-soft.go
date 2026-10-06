@@ -1,6 +1,6 @@
 package theme
 
-import "dotman"
+import "dotman/core"
 
 var GruvboxDarkSoft = dotman.Theme{
 	Name:    "gruvbox-dark-soft",

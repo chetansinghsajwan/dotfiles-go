@@ -1,6 +1,6 @@
 package theme
 
-import "dotman"
+import "dotman/core"
 
 var CatppuccinFrappe = dotman.Theme{
 	Name:    "catppuccin-frappe",

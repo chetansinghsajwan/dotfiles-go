@@ -1,6 +1,6 @@
 package theme
 
-import "dotman"
+import "dotman/core"
 
 var EverforestLightMedium = dotman.Theme{
 	Name:    "everforest-light-medium",

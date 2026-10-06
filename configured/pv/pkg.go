@@ -1,7 +1,7 @@
 package pv
 
 import (
-	"dotman"
+	"dotman/core"
 	"dotman/lib"
 
 	_ "embed"

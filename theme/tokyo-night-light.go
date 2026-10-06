@@ -1,6 +1,6 @@
 package theme
 
-import "dotman"
+import "dotman/core"
 
 var TokyoNightLight = dotman.Theme{
 	Name:    "tokyo-night-light",

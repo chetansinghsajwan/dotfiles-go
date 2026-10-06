@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"dotman"
+	"dotman/core"
 )
 
 var httpClient = &http.Client{Timeout: 5 * time.Minute}

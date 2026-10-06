@@ -1,7 +1,7 @@
 package yazi
 
 import (
-	"dotman"
+	"dotman/core"
 	_ "embed"
 	"log/slog"
 	"os"

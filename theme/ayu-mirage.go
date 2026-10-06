@@ -1,6 +1,6 @@
 package theme
 
-import "dotman"
+import "dotman/core"
 
 var AyuMirage = dotman.Theme{
 	Name:    "ayu-mirage",

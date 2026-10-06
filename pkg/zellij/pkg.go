@@ -12,7 +12,7 @@ import (
 	"strings"
 	"text/template"
 
-	"dotman"
+	"dotman/core"
 	"dotman/lib"
 	"dotman/theme"
 )
