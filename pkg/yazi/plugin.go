@@ -3,7 +3,6 @@ package yazi
 import (
 	"fmt"
 	"io/fs"
-	"log/slog"
 	"os"
 	"path"
 	"path/filepath"
@@ -99,7 +98,7 @@ func (p Plugin) IsLocal() bool {
 
 // Install deploys the plugin into the yazi config directory configPath.
 // Remote plugins are downloaded into store first, reusing an earlier download.
-func (p Plugin) Install(log *slog.Logger, store *dotman.Store, configPath string) error {
+func (p Plugin) Install(store *dotman.Store, configPath string) error {
 	if p.IsLocal() {
 		log.Debug("Installing plugin...", "plugin", p.Path)
 		return p.installLocal(configPath)

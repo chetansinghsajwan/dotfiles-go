@@ -4,7 +4,6 @@ import (
 	_ "embed"
 	"errors"
 	"fmt"
-	"log/slog"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -14,8 +13,11 @@ import (
 
 	"dotman/core"
 	"dotman/lib"
+	"dotman/logging"
 	"dotman/theme"
 )
+
+var log = logging.Get("pkg.zellij")
 
 type Zellij struct {
 	// 0.45.1
@@ -46,7 +48,7 @@ func (z *Zellij) Name() string {
 // Install downloads zellij's binary into storePath/libexec, writes its
 // config (settings and theme) into storePath/config, and writes a wrapper
 // and the shell aliases into storePath/bin that point zellij at that config.
-func (z *Zellij) Install(log *slog.Logger, cfg dotman.Config, store *dotman.Store, storePath string) error {
+func (z *Zellij) Install(cfg dotman.Config, store *dotman.Store, storePath string) error {
 	log.Info("Downloading zellij...", "version", z.Version)
 	unwrappedPath := filepath.Join(storePath, "libexec", "zellij")
 	err := z.DownloadZellij(store, z.Version, runtime.GOOS, runtime.GOARCH, unwrappedPath)

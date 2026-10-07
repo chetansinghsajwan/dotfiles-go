@@ -7,12 +7,15 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
-	"log/slog"
 	"os"
 	"path/filepath"
 
 	"github.com/google/uuid"
+
+	"dotman/logging"
 )
+
+var log = logging.Get("core")
 
 // mergedDirs are the subdirectories of a package's store path that are merged
 // into the profile.
@@ -37,13 +40,13 @@ func DefaultLinkPath() (string, error) {
 // BuildProfile creates a new profile in s that links every file under mergedDirs of
 // each of storePaths, and returns its path. Directories are merged; two
 // packages providing the same file is an error.
-func BuildProfile(log *slog.Logger, s *Store, storePaths []string) (string, error) {
+func BuildProfile(s *Store, storePaths []string) (string, error) {
 	profilePath, err := s.CreatePath("profile")
 	if err != nil {
 		return "", err
 	}
 
-	if err := merge(log, profilePath, storePaths); err != nil {
+	if err := merge(profilePath, storePaths); err != nil {
 		if err := os.RemoveAll(profilePath); err != nil {
 			log.Error("Failed to remove profile path.", "path", profilePath, "err", err)
 		}
@@ -54,7 +57,7 @@ func BuildProfile(log *slog.Logger, s *Store, storePaths []string) (string, erro
 	return profilePath, nil
 }
 
-func merge(log *slog.Logger, profilePath string, storePaths []string) error {
+func merge(profilePath string, storePaths []string) error {
 	for _, storePath := range storePaths {
 		for _, dir := range mergedDirs {
 			root := filepath.Join(storePath, dir)

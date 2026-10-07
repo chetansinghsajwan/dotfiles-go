@@ -4,7 +4,6 @@ import (
 	"archive/zip"
 	"errors"
 	"fmt"
-	"log/slog"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -36,7 +35,7 @@ func releaseTarget() (string, error) {
 // installBinaries downloads the yazi release p.Version for this machine into
 // the store, reusing an earlier download and checking it against p.Hashes,
 // and extracts its binaries into dir.
-func (p *Package) installBinaries(log *slog.Logger, store *dotman.Store, dir string) error {
+func (p *Package) installBinaries(store *dotman.Store, dir string) error {
 	if p.Version == "" {
 		return fmt.Errorf("yazi: Version isn't set")
 	}

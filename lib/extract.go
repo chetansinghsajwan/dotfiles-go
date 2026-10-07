@@ -11,7 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"dotman/core"
+	dotman "dotman/core"
 )
 
 // extractFile writes the file name in zr to dst as an executable.
@@ -164,4 +164,28 @@ func ExtractTarGzFile(archivePath, name, dst string) error {
 
 		return out.Close()
 	}
+}
+
+type ExtractDrv struct {
+	name, filePath, outFilePath string
+}
+
+func NewExtractDrv(name, filePath, outFilePath string) ExtractDrv {
+	return ExtractDrv{
+		name:        name,
+		filePath:    filePath,
+		outFilePath: outFilePath,
+	}
+}
+
+func (e *ExtractDrv) Name() string {
+	return e.name
+}
+
+func (e *ExtractDrv) Inputs() map[string]dotman.Derivation {
+	return nil
+}
+
+func (e *ExtractDrv) Build(in dotman.DerivationInput, out dotman.DerivationOutput) error {
+	return nil
 }

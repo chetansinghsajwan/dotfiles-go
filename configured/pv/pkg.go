@@ -5,7 +5,6 @@ import (
 	"dotman/lib"
 
 	_ "embed"
-	"log/slog"
 	"path/filepath"
 )
 
@@ -23,7 +22,7 @@ var pvScript string
 // file
 // bat
 // tidy-viewer
-func (p *Pv) Install(log *slog.Logger, cfg dotman.Config, store *dotman.Store, storePath string) error {
+func (p *Pv) Install(cfg dotman.Config, store *dotman.Store, storePath string) error {
 	binPath := filepath.Join(storePath, "bin", "pv")
 	return lib.WriteExecutable(binPath, pvScript)
 }

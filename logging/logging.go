@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,22 +13,27 @@ import (
 	"github.com/lmittmann/tint"
 )
 
-// NewHandler returns dotman's handler writing records at or above level to
-// f as "2006-01-02 15-04-05:000 [INF] pkg: msg k=v", coloured when f is a
-// terminal and NO_COLOR isn't set. Paths under storeRoot in attribute values
-// and errors are shortened to "store:<relative path>"; "" keeps them whole.
-func NewHandler(f *os.File, level slog.Level, storeRoot string) slog.Handler {
+// NewHandler returns dotman's handler writing records to f as
+// "2006-01-02 15-04-05:000 [INF] pkg: msg k=v", coloured when f is a terminal
+// and NO_COLOR isn't set. It writes every level; Configure filters them per
+// module. Paths under storeRoot in attribute values and errors are shortened
+// to "store:<relative path>"; "" keeps them whole.
+func NewHandler(f *os.File, storeRoot string) slog.Handler {
 	var r attrReplacer
 	if storeRoot != "" {
 		r.storePrefix = filepath.Clean(storeRoot) + string(filepath.Separator)
 	}
 
-	return NewPrefixHandler(tint.NewHandler(f, &tint.Options{
-		Level:       level,
+	return tint.NewHandler(f, &tint.Options{
+		Level:       minLevel,
 		NoColor:     !useColor(f),
 		ReplaceAttr: r.replaceAttr,
-	}))
+	})
 }
+
+// minLevel is below every level, so the handlers it's set on write all
+// records and leave filtering to the module levels.
+const minLevel = slog.Level(math.MinInt)
 
 // storeTag marks a path as relative to the store root, e.g.
 // "store:<id>-yazi/bin/yazi". It's highlighted in bold bright cyan, ending

@@ -1,0 +1,23 @@
+{
+  "$schema": "https://raw.githubusercontent.com/jetify-com/devbox/0.17.5/.schema/devbox.schema.json",
+  "packages": [
+    "go@1.27",
+    "go-task@latest"
+  ],
+  "env": {
+    "GOTOOLCHAIN": "auto"
+  },
+  "shell": {
+    "init_hook": [
+      "echo 'dotman dev shell — run \"task\" to see available tasks.'"
+    ],
+    "scripts": {
+      "build": [
+        "task build"
+      ],
+      "test": [
+        "task test"
+      ]
+    }
+  }
+}

@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"dotman/core"
+	dotman "dotman/core"
 )
 
 var httpClient = &http.Client{Timeout: 5 * time.Minute}
@@ -138,4 +138,53 @@ type GithubRelease struct {
 func DownloadGithubRelease(store *dotman.Store, r GithubRelease) (string, error) {
 	url := GetGithubUrl(r.Repo, r.Tag, r.Asset)
 	return DownloadFile(store, url, r.Hash)
+}
+
+type FetchDrv struct {
+	name string
+	Url  string
+}
+
+func (f *FetchDrv) Name() string {
+	return f.name
+}
+
+func (f *FetchDrv) Inputs() map[string]dotman.Derivation {
+	return nil
+}
+
+func (f *FetchDrv) Build(in dotman.DerivationInput, out dotman.DerivationOutput) error {
+	url := in.Get("Url")
+	file, err := out.CreateFile(f.name)
+
+	hash, err := download(url, file)
+	if err != nil {
+		file.Close()
+		return err
+	}
+
+	if err := file.Close(); err != nil {
+		return err
+	}
+
+	out.WriteFile(f.name+"hash.txt", hash)
+	out.Save()
+
+	return nil
+}
+
+func NewFetchDrv(url string, name string) *FetchDrv {
+	return &FetchDrv{
+		name: name,
+		Url:  url,
+	}
+}
+
+func NewFetchExtractDrv(url string, name string, files []string) dotman.Derivation {
+
+}
+
+func NewFetchGithubReleaseDrv(r GithubRelease) *FetchDrv {
+	url := GetGithubUrl(r.Repo, r.Tag, r.Asset)
+	return NewFetchDrv(url, r.Asset)
 }

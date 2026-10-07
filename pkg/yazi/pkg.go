@@ -3,7 +3,6 @@ package yazi
 import (
 	"dotman/core"
 	_ "embed"
-	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,8 +11,11 @@ import (
 	"github.com/pelletier/go-toml/v2"
 
 	"dotman/lib"
+	"dotman/logging"
 	"dotman/theme"
 )
+
+var log = logging.Get("pkg.yazi")
 
 type Package struct {
 	// Other names to run yazi by, e.g. "y". Each is written as a command
@@ -72,10 +74,9 @@ func (p *Package) Name() string {
 // Install installs yazi's binaries into storePath/libexec, builds its config
 // directory in storePath/config, and writes wrappers into storePath/bin, which
 // the profile puts on PATH, that point the binaries at that config.
-// log should already be tagged with the package's name.
-func (p *Package) Install(log *slog.Logger, cfg dotman.Config, store *dotman.Store, storePath string) error {
+func (p *Package) Install(cfg dotman.Config, store *dotman.Store, storePath string) error {
 	libexecPath := filepath.Join(storePath, "libexec")
-	if err := p.installBinaries(log, store, libexecPath); err != nil {
+	if err := p.installBinaries(store, libexecPath); err != nil {
 		return err
 	}
 
@@ -84,7 +85,7 @@ func (p *Package) Install(log *slog.Logger, cfg dotman.Config, store *dotman.Sto
 		return err
 	}
 
-	if err := writeWrappers(log, filepath.Join(storePath, "bin"), libexecPath, installPath); err != nil {
+	if err := writeWrappers(filepath.Join(storePath, "bin"), libexecPath, installPath); err != nil {
 		return err
 	}
 
@@ -94,7 +95,7 @@ func (p *Package) Install(log *slog.Logger, cfg dotman.Config, store *dotman.Sto
 	}
 
 	if len(p.Settings) > 0 {
-		if err := writeToml(log, filepath.Join(installPath, "yazi.toml"), p.Settings); err != nil {
+		if err := writeToml(filepath.Join(installPath, "yazi.toml"), p.Settings); err != nil {
 			return err
 		}
 	}
@@ -119,26 +120,26 @@ func (p *Package) Install(log *slog.Logger, cfg dotman.Config, store *dotman.Sto
 			return err
 		}
 
-		if err := writeFile(log, filepath.Join(installPath, "theme.toml"), []byte(themeToml)); err != nil {
+		if err := writeFile(filepath.Join(installPath, "theme.toml"), []byte(themeToml)); err != nil {
 			log.Error("Failed to write theme.", "err", err)
 			return err
 		}
 	}
 
 	if len(p.Keybinds) > 0 {
-		if err := writeToml(log, filepath.Join(installPath, "keymap.toml"), p.keymap()); err != nil {
+		if err := writeToml(filepath.Join(installPath, "keymap.toml"), p.keymap()); err != nil {
 			return err
 		}
 	}
 
 	if p.InitLua != "" {
-		if err := writeFile(log, filepath.Join(installPath, "init.lua"), []byte(p.InitLua)); err != nil {
+		if err := writeFile(filepath.Join(installPath, "init.lua"), []byte(p.InitLua)); err != nil {
 			return err
 		}
 	}
 
 	for _, plugin := range p.Plugins {
-		if err := plugin.Install(log, store, installPath); err != nil {
+		if err := plugin.Install(store, installPath); err != nil {
 			return err
 		}
 	}
@@ -148,7 +149,7 @@ func (p *Package) Install(log *slog.Logger, cfg dotman.Config, store *dotman.Sto
 
 // writeWrappers writes a wrapper into binPath for each binary in libexecPath
 // that sets YAZI_CONFIG_HOME to configPath.
-func writeWrappers(log *slog.Logger, binPath, libexecPath, configPath string) error {
+func writeWrappers(binPath, libexecPath, configPath string) error {
 	if err := os.MkdirAll(binPath, dotman.DirPerm); err != nil {
 		return err
 	}
@@ -196,16 +197,16 @@ func (p *Package) keymap() map[string]map[string][]keymapEntry {
 	return keymap
 }
 
-func writeToml(log *slog.Logger, path string, v any) error {
+func writeToml(path string, v any) error {
 	b, err := toml.Marshal(v)
 	if err != nil {
 		return err
 	}
 
-	return writeFile(log, path, b)
+	return writeFile(path, b)
 }
 
-func writeFile(_ *slog.Logger, path string, b []byte) error {
+func writeFile(path string, b []byte) error {
 	return os.WriteFile(path, b, dotman.FilePerm)
 }
 

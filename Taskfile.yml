@@ -1,0 +1,86 @@
+version: "3"
+
+vars:
+  BIN_DIR: bin
+  BIN_NAME: dotman
+  PKG: ./cmd/dotman
+
+tasks:
+  default:
+    desc: List available tasks
+    cmds:
+      - task --list
+
+  build:
+    desc: Build the dotman binary into {{.BIN_DIR}}/
+    sources:
+      - "**/*.go"
+      - go.mod
+      - go.sum
+    generates:
+      - "{{.BIN_DIR}}/{{.BIN_NAME}}"
+    cmds:
+      - mkdir -p {{.BIN_DIR}}
+      - go build -o {{.BIN_DIR}}/{{.BIN_NAME}} {{.PKG}}
+
+  run:
+    desc: Run dotman from source (pass args after --, e.g. task run -- build)
+    cmds:
+      - go run {{.PKG}} {{.CLI_ARGS}}
+
+  test:
+    desc: Run the test suite
+    cmds:
+      - go test ./...
+
+  test:verbose:
+    desc: Run the test suite with verbose output
+    cmds:
+      - go test -v ./...
+
+  test:cover:
+    desc: Run the test suite with coverage output
+    cmds:
+      - go test -cover ./...
+
+  fmt:
+    desc: Format all Go source files
+    cmds:
+      - gofmt -l -w .
+
+  vet:
+    desc: Run go vet across the module
+    cmds:
+      - go vet ./...
+
+  tidy:
+    desc: Tidy go.mod/go.sum
+    cmds:
+      - go mod tidy
+
+  check:
+    desc: Run fmt, vet and test together
+    cmds:
+      - task: fmt
+      - task: vet
+      - task: test
+
+  clean:
+    desc: Remove build artifacts (leaves the dm.sh-managed Go toolchain in .tmp/ alone)
+    cmds:
+      - rm -rf {{.BIN_DIR}}
+
+  lock:
+    desc: Fetch and lock any downloads missing from dotman.lock
+    cmds:
+      - go run {{.PKG}} lock
+
+  switch:
+    desc: Build the profile and make it the current generation
+    cmds:
+      - go run {{.PKG}} switch
+
+  gc:
+    desc: Garbage-collect old generations and unused store paths
+    cmds:
+      - go run {{.PKG}} gc

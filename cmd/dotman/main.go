@@ -14,6 +14,8 @@ import (
 	"dotman/logging"
 )
 
+var log = logging.Get("main")
+
 // devMode reports whether DOTMAN_DEV is set to a true value, like 1 or true.
 func devMode() bool {
 	dev, _ := strconv.ParseBool(os.Getenv("DOTMAN_DEV"))
@@ -30,14 +32,18 @@ func main() {
 	// shorten paths under it.
 	storeRoot, storeErr := dotman.DefaultStorePath()
 
-	slog.SetDefault(slog.New(logging.NewHandler(os.Stderr, level, storeRoot)))
+	// DOTMAN_LOG sets levels per module, e.g. "info,pkg.yazi=debug".
+	if err := logging.Configure(logging.NewHandler(os.Stderr, storeRoot), level, os.Getenv("DOTMAN_LOG")); err != nil {
+		log.Error("Failed to configure logging.", "err", err)
+		os.Exit(1)
+	}
 
 	cfg := dotman.DefaultConfig
 
-	slog.Info("Initializing store...", "path", storeRoot)
+	log.Info("Initializing store...", "path", storeRoot)
 
 	if storeErr != nil {
-		slog.Error("Failed to initialize store.", "err", storeErr)
+		log.Error("Failed to initialize store.", "err", storeErr)
 		os.Exit(1)
 	}
 
@@ -53,9 +59,8 @@ func main() {
 
 	var storePaths []string
 	for _, p := range packages {
-		slog.Info("Building package...", "pkg", p.Name())
-
-		log := slog.Default().With(logging.PrefixKey, p.Name())
+		log := log.With("pkg", p.Name())
+		log.Info("Building package...")
 
 		storePath, err := s.CreatePath(p.Name())
 		if err != nil {
@@ -63,7 +68,7 @@ func main() {
 			os.Exit(1)
 		}
 
-		err = p.Install(log, cfg, s, storePath)
+		err = p.Install(cfg, s, storePath)
 		if err != nil {
 			log.Error("Failed to build package.", "err", err)
 
@@ -77,24 +82,24 @@ func main() {
 		storePaths = append(storePaths, storePath)
 	}
 
-	slog.Info("Building profile...")
+	log.Info("Building profile...")
 
-	profilePath, err := dotman.BuildProfile(slog.Default(), s, storePaths)
+	profilePath, err := dotman.BuildProfile(s, storePaths)
 	if err != nil {
-		slog.Error("Failed to build profile.", "err", err)
+		log.Error("Failed to build profile.", "err", err)
 		os.Exit(1)
 	}
 
 	linkPath, err := dotman.DefaultLinkPath()
 	if err != nil {
-		slog.Error("Failed to find profile link path.", "err", err)
+		log.Error("Failed to find profile link path.", "err", err)
 		os.Exit(1)
 	}
 
 	if err := dotman.SwitchProfile(linkPath, profilePath); err != nil {
-		slog.Error("Failed to switch profile.", "err", err)
+		log.Error("Failed to switch profile.", "err", err)
 		os.Exit(1)
 	}
 
-	slog.Info("Switched profile.", "profile", profilePath)
+	log.Info("Switched profile.", "profile", profilePath)
 }

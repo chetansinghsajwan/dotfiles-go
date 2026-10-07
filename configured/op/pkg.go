@@ -5,7 +5,6 @@ import (
 	"dotman/lib"
 
 	_ "embed"
-	"log/slog"
 	"path/filepath"
 )
 
@@ -23,7 +22,7 @@ var opScript string
 // file
 // csvlens
 // helix
-func (o *Op) Install(log *slog.Logger, cfg dotman.Config, store *dotman.Store, storePath string) error {
+func (o *Op) Install(cfg dotman.Config, store *dotman.Store, storePath string) error {
 	binPath := filepath.Join(storePath, "bin", "op")
 	return lib.WriteExecutable(binPath, opScript)
 }
