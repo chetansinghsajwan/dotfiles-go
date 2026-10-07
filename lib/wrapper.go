@@ -16,7 +16,12 @@ type WrapperSpec struct {
 	Name string
 
 	// Store paths the wraps refer to. A wrap's Exec, Env values and Args can
-	// name one as @name@, which is replaced by its store path.
+	// name one as @name@, which is replaced by its store path. With inputs
+	// "bin" and "config":
+	//
+	//	"@bin@/bin/yazi" -> "<store>/kvgq…-yazi-bin/bin/yazi"
+	//	"@config@"       -> "<store>/8j48…-yazi-config"
+	//	"@HOME@/x"       -> unchanged (HOME isn't an input)
 	Inputs map[string]*dotman.Derivation
 
 	// Each is written to bin/<Name>.

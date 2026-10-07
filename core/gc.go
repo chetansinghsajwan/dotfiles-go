@@ -73,7 +73,13 @@ func (s *Store) GC(log *slog.Logger, roots []string) ([]string, error) {
 }
 
 // entryName returns the name of the store entry path is in, if it is in
-// the store.
+// the store. With the store at /home/u/.local/share/dotman/store:
+//
+//	<store>/w9dr…-yazi/bin/yazi  -> "w9dr…-yazi", true
+//	<store>/w9dr…-yazi           -> "w9dr…-yazi", true
+//	<store>                      -> "", false
+//	/usr/bin/yazi                -> "", false
+//	<store>-old/x                -> "", false (only a shared prefix)
 func (s *Store) entryName(path string) (string, bool) {
 	rel, err := filepath.Rel(s.rootPath, path)
 	if err != nil || rel == "." || !filepath.IsLocal(rel) {
@@ -83,7 +89,13 @@ func (s *Store) entryName(path string) (string, bool) {
 	return strings.SplitN(filepath.ToSlash(rel), "/", 2)[0], true
 }
 
-// pathHash returns the hash part of a store path's name.
+// pathHash returns the hash part of a store path's name: its first
+// storeHashLen characters, if they are base32 and followed by '-'.
+//
+//	"w9drrwmakfqqbx94i1n5dminkvlqdv03-yazi"        -> "w9drrwmakfqqbx94i1n5dminkvlqdv03", true
+//	"w9drrwmakfqqbx94i1n5dminkvlqdv03"             -> "", false (no name)
+//	".tmp-1a2b3c4d5e6f7a8b-yazi"                   -> "", false (a build in progress)
+//	"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee-x"           -> "", false (e isn't in the alphabet)
 func pathHash(name string) (string, bool) {
 	if len(name) <= storeHashLen || name[storeHashLen] != '-' {
 		return "", false
@@ -98,8 +110,20 @@ func pathHash(name string) (string, bool) {
 }
 
 // scanRefs returns the hashes of the store paths that the files and symlink
-// targets under path mention, by finding prefix, the store's root, followed
-// by a hash.
+// targets under path mention, by finding prefix, the store's root with a
+// trailing separator, followed by a hash and '-'. With prefix
+// "/home/u/.local/share/dotman/store/", text in a file or symlink target
+// counts like this:
+//
+//	exec '<store>/kvgq…-yazi-bin/bin/yazi' "$@"   -> "kvgq…" (a wrapper)
+//	<store>/w9dr…-yazi/bin/yazi                    -> "w9dr…" (a profile symlink)
+//	<store>/.tmp-1a2b3c4d5e6f7a8b-yazi             -> nothing (not a hash)
+//	<store>-old/w9dr…-yazi                         -> nothing (not under the store)
+//	zellij                                         -> nothing (relative)
+//
+// Missing relative references is fine because dotman writes them only
+// within one store path, like the alias symlink z -> zellij. Hashes that
+// match no store path are returned too; GC ignores them.
 func scanRefs(path string, prefix []byte) (map[string]bool, error) {
 	refs := map[string]bool{}
 

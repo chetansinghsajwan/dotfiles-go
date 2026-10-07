@@ -207,6 +207,13 @@ func fixNumbers(v reflect.Value) error {
 	return nil
 }
 
+// numberValue converts n to an int64 if it is a whole number that fits, and
+// a float64 otherwise:
+//
+//	"1920" -> int64(1920)
+//	"-2"   -> int64(-2)
+//	"1.5"  -> float64(1.5)
+//	"1e3"  -> float64(1000)
 func numberValue(n json.Number) (any, error) {
 	if i, err := strconv.ParseInt(string(n), 10, 64); err == nil {
 		return i, nil
@@ -231,7 +238,12 @@ type drvRecord struct {
 }
 
 // canonicalJSON marshals v, then sorts every object's keys, so the result
-// doesn't depend on struct field order. Numbers keep their text.
+// doesn't depend on struct field order. Numbers keep the text the first
+// marshal gave them. For example,
+//
+//	struct{ B int; A string; M map[string]any }{2, "<x>", map[string]any{"z": 1, "a": 1.50}}
+//
+// gives {"A":"<x>","B":2,"M":{"a":1.5,"z":1}}.
 func canonicalJSON(v any) (json.RawMessage, error) {
 	b, err := marshal(v)
 	if err != nil {
@@ -262,6 +274,12 @@ func marshal(v any) ([]byte, error) {
 	return bytes.TrimSuffix(buf.Bytes(), []byte("\n")), nil
 }
 
+// validateName checks name can follow the hash in a store path's name. It
+// can't be empty, hold a '/', or start with '.', which would collide with
+// temporary outputs like .tmp-1a2b3c4d5e6f7a8b-yazi:
+//
+//	"yazi-config" -> ok
+//	"", "a/b", ".tmp-x" -> error
 func validateName(name string) error {
 	if name == "" || strings.ContainsRune(name, '/') || strings.HasPrefix(name, ".") {
 		return fmt.Errorf("invalid derivation name %q", name)

@@ -144,6 +144,8 @@ func (r *Realiser) fixedRecord(drv *Derivation, hash string) *drvRecord {
 	}
 }
 
+// recordPath returns the store path rec hashes to, e.g.
+// <store>/w9drrwmakfqqbx94i1n5dminkvlqdv03-yazi for a record named yazi.
 func (r *Realiser) recordPath(rec *drvRecord) (string, error) {
 	b, err := marshal(rec)
 	if err != nil {
@@ -413,6 +415,8 @@ func (r *Realiser) Check(drv *Derivation) error {
 // tempPath returns a path in the store to build name into before renaming
 // it to its store path, so that path is never seen half built. It is in the
 // store's root so the rename never moves the output between directories.
+// For "yazi" it is like <store>/.tmp-1a2b3c4d5e6f7a8b-yazi; the random part
+// keeps concurrent builds of the same name apart. It isn't created.
 func (r *Realiser) tempPath(name string) (string, error) {
 	if err := os.MkdirAll(r.Store.RootPath(), DirPerm); err != nil {
 		return "", err

@@ -27,7 +27,12 @@ type Wrap struct {
 	Args []string
 }
 
-// CreateWrap writes wrap's script to wrap.Path as an executable.
+// CreateWrap writes wrap's script to wrap.Path as an executable. Env is
+// exported in sorted order, and every value is quoted, e.g.
+//
+//	#!/bin/sh
+//	export YAZI_CONFIG_HOME='<store>/8j48…-yazi-config'
+//	exec '<store>/kvgq…-yazi-bin/bin/yazi' "$@"
 func CreateWrap(wrap Wrap) error {
 	var b strings.Builder
 	b.WriteString("#!/bin/sh\n")
@@ -69,7 +74,12 @@ func CreateShellAliases(binPath, target string, aliases []string) error {
 	return nil
 }
 
-// shellQuote quotes s as a single POSIX shell word.
+// shellQuote quotes s as a single POSIX shell word, in single quotes, so
+// nothing in it is expanded:
+//
+//	/bin/yazi -> '/bin/yazi'
+//	it's      -> 'it'\''s'
+//	""        -> ''
 func shellQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }

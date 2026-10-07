@@ -14,7 +14,8 @@ import (
 	"dotman/core"
 )
 
-// extractFile writes the file name in zr to dst as an executable.
+// ExtractFile writes the file name in zr to dst as an executable. name is
+// the full path in the zip, e.g. "yazi-x86_64-unknown-linux-musl/yazi".
 func ExtractFile(zr *zip.Reader, name, dst string) error {
 	src, err := zr.Open(name)
 	if err != nil {
@@ -38,7 +39,13 @@ func ExtractFile(zr *zip.Reader, name, dst string) error {
 // ExtractTarGzDir writes the directory dir of the tar.gz at archivePath to
 // dst, ignoring the archive's single top-level directory, as GitHub's source
 // archives have; dir "" extracts everything under it. Files keep their
-// executable bit; links and other special files are skipped.
+// executable bit; links and other special files are skipped. For example,
+// with dir "piper.yazi", an archive holding
+//
+//	plugins-7200d73/piper.yazi/main.lua
+//	plugins-7200d73/README.md
+//
+// writes only dst/main.lua.
 func ExtractTarGzDir(archivePath, dir, dst string) error {
 	f, err := os.Open(archivePath)
 	if err != nil {
@@ -120,7 +127,8 @@ func ExtractTarGzDir(archivePath, dir, dst string) error {
 // ExtractTarGzFile writes the regular file called name, at any depth, of the
 // tar.gz at archivePath to dst as an executable, creating dst's directory.
 // It is for release archives that hold a binary, maybe next to a README or
-// LICENSE.
+// LICENSE: name "lazygit" finds "lazygit" or "lazygit_0.65.1/lazygit", but
+// not "lazygit.1" or "docs/lazygit/". The first match wins.
 func ExtractTarGzFile(archivePath, name, dst string) error {
 	f, err := os.Open(archivePath)
 	if err != nil {

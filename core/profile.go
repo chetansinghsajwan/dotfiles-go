@@ -134,10 +134,18 @@ func (g *Generations) dir() string {
 	return filepath.Join(g.stateDir, "profiles")
 }
 
+// generationName returns the name of generation n's link, e.g.
+// "profile-12-link" for 12.
 func generationName(n int) string {
 	return "profile-" + strconv.Itoa(n) + "-link"
 }
 
+// parseGenerationName returns the generation a link's name is for:
+//
+//	"profile-12-link" -> 12, true
+//	"profile-0-link"  -> 0, false (generations start at 1)
+//	"profile-x-link"  -> 0, false
+//	"profile"         -> 0, false (the link to the current generation)
 func parseGenerationName(name string) (int, bool) {
 	s, ok := strings.CutPrefix(name, "profile-")
 	if !ok {

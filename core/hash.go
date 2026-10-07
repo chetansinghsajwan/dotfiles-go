@@ -38,7 +38,9 @@ const storeHashLen = 32
 var storeEncoding = base32.NewEncoding("0123456789abcdfghijklmnpqrsvwxyz").WithPadding(base32.NoPadding)
 
 // storeHash returns the hash part of a store path for sum: the first 160
-// bits, base32-encoded into storeHashLen characters.
+// bits, base32-encoded into storeHashLen characters, e.g.
+// "w9drrwmakfqqbx94i1n5dminkvlqdv03" in
+// <store>/w9drrwmakfqqbx94i1n5dminkvlqdv03-yazi.
 func storeHash(sum []byte) string {
 	return storeEncoding.EncodeToString(sum[:20])
 }
@@ -68,6 +70,15 @@ func FileHash(path string) (string, error) {
 // target, but not other permission bits or times, so a tree hashes the same
 // before and after it is normalized into the store, and an embed.FS hashes
 // the same as its copy on disk.
+//
+// Paths are relative to root, so where the tree is doesn't matter. Hashing
+// root "plugins/places.yazi" of a tree holding
+//
+//	plugins/places.yazi/main.lua
+//	plugins/places.yazi/lib/util.lua
+//
+// covers the entries ".", "lib", "lib/util.lua" and "main.lua", the same as
+// a copy of that directory anywhere else.
 func TreeHash(fsys fs.FS, root string) (string, error) {
 	h := sha256.New()
 

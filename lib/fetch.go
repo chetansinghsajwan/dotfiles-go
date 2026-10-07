@@ -105,19 +105,28 @@ func FetchTarball(name, url string) *dotman.Derivation {
 	}
 }
 
-// storeName makes s usable as a derivation name.
+// storeName makes s usable as a derivation name, by replacing '/' and
+// dropping leading dots:
+//
+//	"yazi-x86_64-unknown-linux-musl.zip" -> unchanged
+//	"a/b"     -> "a-b"
+//	".config" -> "config"
 func storeName(s string) string {
 	s = strings.ReplaceAll(s, "/", "-")
 	return strings.TrimLeft(s, ".")
 }
 
+// GetGithubUrl returns the url of a release asset, e.g. for "sxyazi/yazi",
+// "v26.9.1" and "yazi-x86_64-unknown-linux-musl.zip":
+// https://github.com/sxyazi/yazi/releases/download/v26.9.1/yazi-x86_64-unknown-linux-musl.zip
 func GetGithubUrl(repo string, tag string, asset string) string {
 	return "https://github.com/" + repo + "/releases/download/" + tag + "/" + asset
 }
 
 // GetGithubArchiveUrl returns the url of the tar.gz of repo's source at rev,
-// a commit, branch or tag. The archive holds the source under a single
-// top-level directory.
+// a commit, branch or tag, e.g. for "yazi-rs/plugins" and "7200d73":
+// https://github.com/yazi-rs/plugins/archive/7200d73.tar.gz. The archive
+// holds the source under a single top-level directory.
 func GetGithubArchiveUrl(repo string, rev string) string {
 	return "https://github.com/" + repo + "/archive/" + rev + ".tar.gz"
 }
@@ -135,7 +144,8 @@ func FetchGithubRelease(r GithubRelease) *dotman.Derivation {
 }
 
 // FetchGithubArchive returns a derivation that downloads and unpacks repo's
-// source at rev, like FetchTarball.
+// source at rev, like FetchTarball. It is named <repo's name>-<rev>, e.g.
+// "plugins-7200d73" for "yazi-rs/plugins" at "7200d73".
 func FetchGithubArchive(repo, rev string) *dotman.Derivation {
 	return FetchTarball(path.Base(repo)+"-"+rev, GetGithubArchiveUrl(repo, rev))
 }
